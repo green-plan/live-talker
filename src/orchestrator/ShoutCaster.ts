@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import type {
+  Beat,
   OrchestratorConfig,
   Passage,
   PlannedClip,
@@ -22,6 +23,12 @@ import { batchTrace, formatClock } from "../utils/time.js";
 
 const log = logger.child({ service: "[Shoutcast]" });
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// The single rule for "is there anything here worth narrating": a beat the caster
+// would actually speak (medium/high intensity). Low-only noise (ambient gunfire,
+// stray deaths, economy reads) never becomes audio. Defined once so the lull timer
+// and the text-stage skip can't drift apart.
+const hasSpeakableBeat = (beats: Beat[]): boolean => beats.some(b => b.intensity !== "low");
 
 // Rendered slot: a finished clip, or FAILED (synthesis produced nothing) so the
 // conductor can skip the index instead of waiting on it forever.
@@ -167,8 +174,7 @@ export class ShoutCaster {
     // windows (ambient gunfire, lone deaths, economy reads) get dropped by the all-low
     // filter, so they must NOT keep the lull timer alive — otherwise a quiet-but-noisy
     // stretch produces no clips AND no filler, i.e. dead silence.
-    const hasSpokenBeat = beats.some(b => b.intensity !== "low");
-    if (hasSpokenBeat) {
+    if (hasSpeakableBeat(beats)) {
       this.lastRealBeatWatermark = watermark;
     } else {
       this.maybeFillDeadAir(watermark, settledSnap);
@@ -240,7 +246,7 @@ export class ShoutCaster {
     // is not worth an LLM + TTS call — it produces filler that pads the queue
     // and pushes real commentary further behind.
     const isFiller = batch.beats.some(b => b.type === "analysis");
-    if (!isFiller && batch.beats.every(b => b.intensity === "low")) {
+    if (!isFiller && !hasSpeakableBeat(batch.beats)) {
       const id = batchTrace(batch.index);
       log.debug({ batch: id, beats: batch.beats.length }, `${id} all-low batch — skipped`);
       for (const b of batch.beats) this.beatDebugRecorder?.recordBeat(b, "SKIPPED-all-low");

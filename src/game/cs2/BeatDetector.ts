@@ -216,10 +216,12 @@ export class BeatDetector {
         : prevStreak.base;
       const announced = prevStreak?.announced ?? 0;
       const streakDepth = killer.killsThisRound - base;
-      this.multiKillStreaks.set(killer.steamid, { base, lastAt: now, announced });
+      const announce = streakDepth >= 2 && streakDepth > announced && MULTIKILL_TERMS[streakDepth] != null;
+      // Single write: advance lastAt/base every kill, and bump `announced` only
+      // when this kill actually triggers a new multi-kill call below.
+      this.multiKillStreaks.set(killer.steamid, { base, lastAt: now, announced: announce ? streakDepth : announced });
 
-      if (streakDepth >= 2 && streakDepth > announced && MULTIKILL_TERMS[streakDepth]) {
-        this.multiKillStreaks.set(killer.steamid, { base, lastAt: now, announced: streakDepth });
+      if (announce) {
         this.push(out, now, "multiKill", `${killer.name} — ${MULTIKILL_TERMS[streakDepth]}!`, streakDepth >= 3 ? "high" : "medium", killer.name, killer.location ?? undefined, cur.aliveCT, cur.aliveT);
       }
     }
