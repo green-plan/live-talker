@@ -321,15 +321,11 @@ export class ShoutCaster {
         }
         const ttsMs = Date.now() - t0;
         const durationMs = Math.round(await wavDurationMs(filePath));
-        const clip: RenderedClip = {
-          index: planned.index,
-          anchorTs: planned.anchorTs,
-          filePath,
-          sourceBeatIds: planned.sourceBeatIds,
-          transcript: planned.transcript,
-          durationMs,
-          ttsMs,
-        };
+        // Carry the shared clip identity (index/anchorTs/transcript/sourceBeatIds)
+        // straight over from the planned clip; only the render artifacts are new.
+        // `speech` (TTS-only scaffolding) is dropped — it has no role past synthesis.
+        const { speech: _speech, ...base } = planned;
+        const clip: RenderedClip = { ...base, filePath, durationMs, ttsMs };
         log.info(
           { batch: id, durationMs, ttsMs },
           `🔊 ${id} rendered — ${durationMs}ms audio in ${ttsMs}ms tts`

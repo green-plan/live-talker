@@ -67,26 +67,32 @@ export interface SealedBatch {
   state: BatchState;
 }
 
-/** A storyteller passage produced from a batch, ready for speech synthesis. */
-export interface PlannedClip {
+/**
+ * Identity carried by a passage as it moves through the speech + conductor
+ * stages: which batch it is, when its action happened, the spoken words, and
+ * the beats it covered. PlannedClip and RenderedClip both build on this so the
+ * shared fields are declared (and evolve) in exactly one place.
+ */
+export interface ClipBase {
+  /** Batch index — correlates the passage across every stage. */
   index: number;
+  /** When the action this passage covers began (batch anchorTs). (ms) */
   anchorTs: number;
-  /** Full text handed to TTS (may carry voice-engine scaffolding). */
-  speech: string;
-  /** Spoken words only — recorded in the passage history. */
+  /** Spoken words only — recorded in the passage history and subtitle track. */
   transcript: string;
   /** The beat ids this passage covered. */
   sourceBeatIds: number[];
 }
 
+/** A storyteller passage produced from a batch, ready for speech synthesis. */
+export interface PlannedClip extends ClipBase {
+  /** Full text handed to TTS (may carry voice-engine scaffolding). */
+  speech: string;
+}
+
 /** A rendered audio clip waiting for the conductor to air it. */
-export interface RenderedClip {
-  index: number;
-  anchorTs: number;
+export interface RenderedClip extends ClipBase {
   filePath: string;
-  sourceBeatIds: number[];
-  /** Spoken words — logged when the clip is dropped by the expiry gate. */
-  transcript: string;
   /** Actual audio length of the clip. (ms) */
   durationMs: number;
   /** How long the TTS render took. (ms) */
