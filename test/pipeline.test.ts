@@ -18,7 +18,13 @@ function beat(id: number): Beat {
 }
 
 function sealedBatch(index: number, anchorTs: number): SealedBatch {
-  return { index, beats: [beat(index)], anchorTs, windowStart: anchorTs, windowEnd: anchorTs + 1000, snapshot: snap, state: "SEALED" };
+  return { index, beats: [beat(index)], anchorTs, snapshot: snap };
+}
+
+/** A sealed batch carrying only low-intensity ambient noise — dropped before the text stage. */
+function lowOnlyBatch(index: number, anchorTs: number): SealedBatch {
+  const b: Beat = { id: index, type: "gunfire", summary: "ambient", intensity: "low", timestamp: anchorTs };
+  return { index, beats: [b], anchorTs, snapshot: snap };
 }
 
 /** Fake player that records when each clip started and blocks for a set duration. */
@@ -102,6 +108,50 @@ describe("Conductor (play head)", () => {
     sc.markRendered(3, rendered(3, T0 + 20, 10));
     await sleep(250);
     expect(player.plays.map(p => p.file)).toEqual(["clip1", "clip3"]);
+  });
+});
+
+describe("Dead-air filler (broadcast safety)", () => {
+  // The lull filler must NEVER air over real action. It may only fire when the
+  // pipeline holds no speakable commentary — even if that commentary is still
+  // sitting in the sealed queue, not yet picked up by the text stage.
+  const liveSnap = { roundPhase: "live", players: [{}] } as unknown as GameSnapshot;
+
+  function idleCaster() {
+    const sc: any = makeCaster({ lullMs: 1000 }, new FakePlayer(), new MockCommentaryWriter(0));
+    sc.lastRealBeatWatermark = 0; // lull window has fully elapsed by watermark 10000
+    return sc;
+  }
+
+  it("injects a filler when the pipeline is genuinely idle", () => {
+    const sc = idleCaster();
+    const before = sc.batcher.pendingCount();
+    sc.maybeFillDeadAir(10000, liveSnap);
+    expect(sc.batcher.pendingCount()).toBe(before + 1);
+  });
+
+  it("does NOT inject a filler while a speakable batch is still queued", () => {
+    const sc = idleCaster();
+    sc.sealedQueue = [sealedBatch(1, 0)]; // medium-intensity batch awaiting the text stage
+    const before = sc.batcher.pendingCount();
+    sc.maybeFillDeadAir(10000, liveSnap);
+    expect(sc.batcher.pendingCount()).toBe(before); // held off — never talk over the real call
+  });
+
+  it("still injects a filler when the only queued batch is low-only (it never airs)", () => {
+    const sc = idleCaster();
+    sc.sealedQueue = [lowOnlyBatch(1, 0)]; // dropped before synthesis, so it must not block
+    const before = sc.batcher.pendingCount();
+    sc.maybeFillDeadAir(10000, liveSnap);
+    expect(sc.batcher.pendingCount()).toBe(before + 1);
+  });
+
+  it("does NOT inject a filler while a clip is rendered and waiting to air", () => {
+    const sc = idleCaster();
+    sc.markRendered(1, rendered(1, 0, 10));
+    const before = sc.batcher.pendingCount();
+    sc.maybeFillDeadAir(10000, liveSnap);
+    expect(sc.batcher.pendingCount()).toBe(before);
   });
 });
 

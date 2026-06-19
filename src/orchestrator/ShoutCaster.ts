@@ -194,16 +194,9 @@ export class ShoutCaster {
     if (watermark - this.lastRealBeatWatermark < this.cfg.lullMs) return;
     if (snap.roundPhase !== "live" && snap.roundPhase !== "freezetime") return;
 
-    // Only real upcoming audio should hold the filler off. Low-only batches sitting in
-    // the batcher / sealedQueue are dropped before the text stage (all-low filter), so
-    // they never become audio and must not block. textBusy / speech / rendered only ever
-    // reflect medium/high (or filler) clips, which DO air — those gate us.
-    const audioPending =
-      this.textBusy ||
-      this.speechPool.running > 0 ||
-      this.speechPool.waiting > 0 ||
-      this.rendered.size > 0;
-    if (audioPending) return;
+    // Never talk over real action: hold the filler off while any speakable
+    // commentary is anywhere in the pipeline.
+    if (this.realAudioPending()) return;
 
     this.batcher.add({
       id: -Date.now(), // negative id marks it synthetic
@@ -214,6 +207,35 @@ export class ShoutCaster {
     });
     this.lastRealBeatWatermark = watermark;
     log.debug({ at: formatClock(watermark) }, "💬 dead-air filler beat injected");
+  }
+
+  /**
+   * True when speakable commentary is anywhere in the pipeline — being written
+   * (textBusy), rendering or queued in the speech pool, waiting to air (rendered),
+   * currently on air (conductorBusy), or sealed but not yet picked up by the text
+   * stage. The lull filler checks this so it never airs over real action.
+   *
+   * `conductorBusy` matters because the broadcast delay (delayMs) far exceeds the
+   * lull window: a clip can sit airing long after its beats stopped advancing the
+   * lull timer, and during that airing it has already been removed from `rendered`.
+   * Without this guard a filler could be queued on top of a real clip mid-broadcast.
+   *
+   * Low-only sealed batches are deliberately excluded: the text stage drops them
+   * (all-low filter), so they never become audio and must not hold the filler off
+   * forever. A sealed batch only blocks if it carries a speakable (medium/high)
+   * beat or the analysis filler — exactly the batches that DO air.
+   */
+  private realAudioPending(): boolean {
+    return (
+      this.textBusy ||
+      this.conductorBusy ||
+      this.speechPool.running > 0 ||
+      this.speechPool.waiting > 0 ||
+      this.rendered.size > 0 ||
+      this.sealedQueue.some(
+        b => b.beats.some(x => x.type === "analysis") || hasSpeakableBeat(b.beats)
+      )
+    );
   }
 
   // --- Main tick -------------------------------------------------------------

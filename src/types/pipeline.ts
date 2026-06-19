@@ -42,7 +42,11 @@ export interface Beat {
 // Conductor lays those clips back onto the real timeline. Every artifact carries
 // the batch `index` as a correlative trace id (rendered as "b0042" in logs).
 
-/** Lifecycle of a batch as it moves through the delayed pipeline. */
+/**
+ * Lifecycle of a batch as it moves through the delayed pipeline. Reserved for the
+ * planned commentary state machine — not yet tracked as a field on SealedBatch
+ * (the live pipeline derives stage from textBusy / the rendered map / the conductor).
+ */
 export type BatchState =
   | 'ACCUMULATING' // open window, still collecting beats
   | 'SEALED'       // window closed; handed to the text stage
@@ -61,10 +65,7 @@ export interface SealedBatch {
   index: number;
   beats: Beat[];
   anchorTs: number;
-  windowStart: number;
-  windowEnd: number;
   snapshot: GameSnapshot;
-  state: BatchState;
 }
 
 /**

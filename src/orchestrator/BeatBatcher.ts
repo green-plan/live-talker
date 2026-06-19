@@ -73,11 +73,12 @@ export class BeatBatcher {
 
     const spanExceeded = open && !open.forceSeal &&
       (beat.timestamp - open.windowStart) >= this.batchMaxMs;
-    // A beat whose event-time is more than beatGapMs past the open cluster's last beat
-    // belongs to a new island (the previous one ended). Guards against out-of-order or
-    // sparse beats being glued onto a stale cluster.
+    // A beat at least beatGapMs past the open cluster's last beat belongs to a new
+    // island (the previous one ended). Uses >= to match collectSealed, which treats
+    // an island as sealable the instant the clock reaches lastBeatTs + beatGapMs —
+    // so a beat landing exactly on that frontier opens the next island, not this one.
     const gapExceeded = open && !open.forceSeal &&
-      (beat.timestamp - open.lastBeatTs) > this.beatGapMs;
+      (beat.timestamp - open.lastBeatTs) >= this.beatGapMs;
 
     const needsNew = !open || open.forceSeal || spanExceeded || gapExceeded;
     if (needsNew) {
@@ -133,10 +134,7 @@ export class BeatBatcher {
         index: this.nextIndex++,
         beats: b.beats,
         anchorTs: b.windowStart,
-        windowStart: b.windowStart,
-        windowEnd: lastTs,
         snapshot: resolveSnapshot(lastTs),
-        state: "SEALED",
       };
       out.push(sealed);
 

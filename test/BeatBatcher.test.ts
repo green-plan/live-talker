@@ -82,9 +82,9 @@ describe("BeatBatcher", () => {
     const sealed = b.collectSealed(100000, resolve);
     // Spans: [0..3000] (cap at 4000 → beat@4000 opens new), [4000..7000], [8000..9000].
     expect(sealed).toHaveLength(3);
-    expect(sealed[0].windowStart).toBe(0);
-    expect(sealed[1].windowStart).toBe(4000);
-    expect(sealed[2].windowStart).toBe(8000);
+    expect(sealed[0].anchorTs).toBe(0);
+    expect(sealed[1].anchorTs).toBe(4000);
+    expect(sealed[2].anchorTs).toBe(8000);
     // Every beat is accounted for exactly once.
     const allIds = sealed.flatMap(s => s.beats.map(e => e.id));
     expect(allIds).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
