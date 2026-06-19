@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+*.log
+/tmp/
+scripts/gsi-dump.jsonl
+*.wav
+*.srt
+gsi-dump.jsonl
+.idea/
+temp/
+
+# Local Claude Code config (machine-specific; a shared .claude/settings.json may be committed)
+.claude/settings.local.json
