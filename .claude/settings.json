@@ -2,7 +2,6 @@
   "permissions": {
     "allow": [],
     "deny": [
-      "Bash(git push*)",
       "Read(./.env)",
       "Read(./dist/*)",
       "Read(./temp/*)",
