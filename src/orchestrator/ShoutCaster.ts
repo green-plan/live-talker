@@ -295,6 +295,7 @@ export class ShoutCaster {
         snapshot: batch.snapshot,
         passageHistory: this.passageHistory.slice(-this.cfg.passageHistoryCount),
         tacticalContext: this.interpreter.describeSituation(batch.snapshot),
+        queueDepth: this.sealedQueue.length + this.batcher.pendingCount(),
       });
       if (!result) {
         log.warn({ batch: id }, `${id} produced no passage — skipping`);
@@ -303,9 +304,15 @@ export class ShoutCaster {
       }
 
       const basedOn = batch.beats.map(e => e.summary);
+      // Use the writer's effective anchor, not the batch's nominal one — if the LLM
+      // skipped the batch's leading beat(s), this is the timestamp of the beat it
+      // actually opens on, so the clip airs/records at the moment it describes
+      // instead of the (earlier) moment of the beat it chose not to narrate.
+      const anchorTs = result.effectiveAnchorTs;
+
       // Record the passage in history BEFORE the next batch starts (the finally
       // below releases textBusy), so the sequential story sees this line.
-      this.passageHistory.push({ index: batch.index, text: result.transcript, anchorTs: batch.anchorTs, round: batch.snapshot.currentRound, basedOn });
+      this.passageHistory.push({ index: batch.index, text: result.transcript, anchorTs, round: batch.snapshot.currentRound, basedOn, userTurn: result.userTurn });
       if (this.passageHistory.length > MAX_PASSAGE_HISTORY) {
         this.passageHistory.splice(0, this.passageHistory.length - MAX_PASSAGE_HISTORY);
       }
@@ -318,7 +325,7 @@ export class ShoutCaster {
 
       const planned: PlannedClip = {
         index: batch.index,
-        anchorTs: batch.anchorTs,
+        anchorTs,
         speech: result.speech,
         transcript: result.transcript,
         sourceBeatIds: batch.beats.map(e => e.id),

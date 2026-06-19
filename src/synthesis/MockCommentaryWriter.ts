@@ -26,6 +26,7 @@ export class MockCommentaryWriter implements ICommentaryWriter {
       },
       `synthesized: "${text.slice(0, 80)}"`
     );
-    return { speech: text, transcript: text };
+    const effectiveAnchorTs = Math.min(...beats.map((b) => b.timestamp));
+    return { speech: text, transcript: text, userTurn: preview, effectiveAnchorTs };
   }
 }

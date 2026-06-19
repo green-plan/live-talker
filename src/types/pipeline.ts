@@ -116,6 +116,10 @@ export interface Passage {
   round: number;
   /** Summaries of the beats this passage was based on — the "why" behind the call. */
   basedOn: string[];
+  /** The exact user-turn content sent for this passage — replayed verbatim as a
+   *  historical `user` message so future calls continue the real conversation
+   *  instead of reading a text summary of it. */
+  userTurn: string;
 }
 
 /**

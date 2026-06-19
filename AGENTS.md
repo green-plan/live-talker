@@ -1,3 +1,5 @@
+You operate according to the `.claude/skills/ponytail/SKILL.md` guidelines.
+
 # Agent Guide: CS2 Live AI Shoutcaster
 
 Orientation for working **in** this codebase. It covers the layering, conventions, and

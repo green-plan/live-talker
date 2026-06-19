@@ -17,6 +17,9 @@ export interface CommentaryContext {
    * Produced by BeatDetector, not the commentary layer.
    */
   tacticalContext: string;
+  /** Batches still waiting behind this one (sealedQueue + batcher pending),
+   *  captured when this batch was picked up. Drives pacing under backlog. */
+  queueDepth: number;
 }
 
 /** Result of a commentary call: the two views of one commentary passage. */
@@ -25,6 +28,17 @@ export interface CommentaryResult {
   speech: string;
   /** Spoken words only — what the caster actually says, recorded in the history. */
   transcript: string;
+  /** The user-turn content this call was built from — handed back so the
+   *  caller can store it on the resulting Passage for future replay. */
+  userTurn: string;
+  /**
+   * The timestamp of the beat this passage actually opens on. Equals the batch's
+   * first beat when the LLM narrated it; otherwise the LLM skipped the batch's
+   * leading beat(s) and this is the timestamp of the one it actually starts from —
+   * the caller should schedule/record the clip at THIS time, not the batch's
+   * nominal anchor, so the audio doesn't air earlier than the moment it describes.
+   */
+  effectiveAnchorTs: number;
 }
 
 /**

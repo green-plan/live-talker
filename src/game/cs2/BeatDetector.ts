@@ -93,7 +93,12 @@ export class BeatDetector {
     const out: Beat[] = [];
 
     // Objective/flow events (bomb, round, mvp) keep their own receive timestamps.
-    this.processObjectiveEvents(rawEvents, out);
+    // They carry no snapshot of their own, so tag them with the closest available
+    // one (the window's last snapshot, or priorSnapshot if the window is empty) —
+    // an approximation, but still better ground truth than no tag at all, since
+    // events and snapshots are tightly correlated in time within one tiny window.
+    const latestSnapshot = snapshots.length > 0 ? snapshots[snapshots.length - 1].snapshot : priorSnapshot;
+    this.processObjectiveEvents(rawEvents, out, latestSnapshot);
 
     // Walk every snapshot in the window in order, diffing each against the previous one.
     // priorSnapshot is the last snapshot from the previous window (supplied by the caller
@@ -126,7 +131,9 @@ export class BeatDetector {
   // --- 1. Objective / flow events from the raw buffer ------------------------
   // These DO fire via digest(): bomb lifecycle, defuse, round/match end, mvp.
 
-  private processObjectiveEvents(events: GsiEvent[], out: Beat[]): void {
+  private processObjectiveEvents(events: GsiEvent[], out: Beat[], latestSnapshot: GameSnapshot | null): void {
+    const aliveCT = latestSnapshot?.aliveCT;
+    const aliveT = latestSnapshot?.aliveT;
     for (const evt of events) {
       // Use the GSI event's own timestamp so beats are anchored to when the game
       // action fired, not when the detector happened to run. State-diff beats
@@ -135,32 +142,32 @@ export class BeatDetector {
       const at = evt.timestamp;
       switch (evt.event) {
         case "bombPlantStart":
-          this.push(out, at, "bombPlantStart", `${evt.playerName ?? "A terrorist"} is going for the plant`, "medium", evt.playerName);
+          this.push(out, at, "bombPlantStart", `${evt.playerName ?? "A terrorist"} is going for the plant`, "medium", evt.playerName, undefined, aliveCT, aliveT);
           break;
         case "bombPlantStop":
-          this.push(out, at, "bombPlantStop", `${evt.playerName ?? "A terrorist"} is forced off the plant`, "medium", evt.playerName);
+          this.push(out, at, "bombPlantStop", `${evt.playerName ?? "A terrorist"} is forced off the plant`, "medium", evt.playerName, undefined, aliveCT, aliveT);
           break;
         case "bombPlant":
-          this.push(out, at, "bombPlant", `${evt.playerName ?? "A terrorist"} plants the bomb`, "high", evt.playerName);
+          this.push(out, at, "bombPlant", `${evt.playerName ?? "A terrorist"} plants the bomb`, "high", evt.playerName, undefined, aliveCT, aliveT);
           break;
         case "bombDefuse":
-          this.push(out, at, "bombDefuse", `${evt.playerName ?? "A CT"} defuses the bomb`, "high", evt.playerName);
+          this.push(out, at, "bombDefuse", `${evt.playerName ?? "A CT"} defuses the bomb`, "high", evt.playerName, undefined, aliveCT, aliveT);
           break;
         case "bombExplode":
-          this.push(out, at, "bombExplode", "The bomb detonates", "high");
+          this.push(out, at, "bombExplode", "The bomb detonates", "high", undefined, undefined, aliveCT, aliveT);
           break;
         case "defuseStart":
-          this.push(out, at, "defuseStart", `${evt.playerName ?? "A CT"} starts the defuse`, "medium", evt.playerName);
+          this.push(out, at, "defuseStart", `${evt.playerName ?? "A CT"} starts the defuse`, "medium", evt.playerName, undefined, aliveCT, aliveT);
           break;
         case "defuseStop":
           // Defuse was live and got cancelled — genuinely dramatic tension shift.
-          this.push(out, at, "defuseStop", `${evt.playerName ?? "A CT"} is forced off the defuse`, "high", evt.playerName);
+          this.push(out, at, "defuseStop", `${evt.playerName ?? "A CT"} is forced off the defuse`, "high", evt.playerName, undefined, aliveCT, aliveT);
           break;
         case "roundEnd":
-          this.push(out, at, "roundEnd", "Round over", "medium");
+          this.push(out, at, "roundEnd", "Round over", "medium", undefined, undefined, aliveCT, aliveT);
           break;
         case "matchEnd":
-          this.push(out, at, "matchEnd", "Match over", "high");
+          this.push(out, at, "matchEnd", "Match over", "high", undefined, undefined, aliveCT, aliveT);
           break;
         case "mvp":
           this.push(out, at, "mvp", `${evt.playerName ?? "A player"} takes the round MVP`, "medium", evt.playerName);
@@ -273,7 +280,7 @@ export class BeatDetector {
           out, now, "bombDropped",
           prevCarrier ? `${prevCarrier.name} drops the bomb` : "The bomb is live on the floor",
           "high",
-          prevCarrier?.name
+          prevCarrier?.name, undefined, snap.aliveCT, snap.aliveT
         );
       }
       if (prevBomb === "dropped" && snap.bombState === "carried") {
@@ -282,7 +289,7 @@ export class BeatDetector {
           out, now, "bombPickup",
           newCarrier ? `${newCarrier.name} picks up the bomb` : "The bomb has been recovered",
           "medium",
-          newCarrier?.name
+          newCarrier?.name, undefined, snap.aliveCT, snap.aliveT
         );
       }
     }
@@ -301,7 +308,8 @@ export class BeatDetector {
           `${hero?.name ?? clutch.side} is in a 1v${clutch.vs} clutch`,
           clutch.vs >= 2 ? "high" : "medium",
           hero?.name,
-          hero?.location ?? undefined
+          hero?.location ?? undefined,
+          snap.aliveCT, snap.aliveT
         );
       }
     }

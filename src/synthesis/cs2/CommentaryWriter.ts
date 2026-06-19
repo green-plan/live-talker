@@ -1,7 +1,6 @@
 import type { ICommentaryWriter, CommentaryContext, CommentaryResult } from "../contracts.js";
 import type { OpenRouterClient } from "../../infra/OpenRouterClient.js";
 import { logger } from "../../utils/logger.js";
-import { formatClock } from "../../utils/time.js";
 
 const log = logger.child({ service: "[CommentaryWriter]" });
 
@@ -87,24 +86,36 @@ Halftime (12 rounds): "now they flip sides — can they carry this lead onto CT?
 // are fully locked in, so the job is no longer to race the game — it's to tell
 // the segment's story completely, accurately, and in flowing continuity with
 // what was already said. The stream is uniformly delayed, so it still sounds live.
-const CONTINUITY_BLOCK = `You are calling the game on a short broadcast delay — the segment you're given has already finished, so you can see exactly what happened and narrate it with perfect accuracy. The user message gives you:
+//
+// History is carried as REAL conversation turns (each prior passage replayed as
+// a user/assistant pair — see `write()`), not as a text block describing the
+// past. That lets the model continue its own broadcast the way it's actually
+// trained to, instead of being told to obey a described history — the prompt
+// below only needs to explain that framing, not restate the history itself.
+const CONTINUITY_BLOCK = `You are calling the game on a short broadcast delay — the segment you're given has already finished, so you can see exactly what happened and narrate it with perfect accuracy.
 
+EVERY EARLIER MESSAGE IN THIS CONVERSATION IS SOMETHING YOU ALREADY SAID OUT LOUD, LIVE, IN ORDER. Treat your last reply as the broadcast's most recent line — continue forward from it. Never repeat, rephrase, or restate anything you already said in an earlier turn; if you're not sure, assume the audience already heard it. If there are no earlier messages, you're opening the broadcast cold.
+
+The newest message gives you:
 - CURRENT MATCH STATE — the raw macro data (score, phase, bomb state, alive counts, player snapshots).
 - TACTICAL SITUATION — a pre-interpreted summary of what the match state MEANS right now. USE THIS to frame your commentary with the right stakes and urgency.
-- WHAT YOU'VE ALREADY SAID — your own recent passages, oldest first. THIS IS YOUR SHOUTCAST HISTORY. Continue seamlessly — NEVER repeat a call you've already made or restate a fact you've established.
-- THIS SEGMENT'S EVENTS — the beats that happened in this window, numbered #1, #2, #3… IN THE EXACT ORDER THEY OCCURRED, each with a "+Xs" time offset confirming that order. This is what you narrate now.
+- THIS SEGMENT'S EVENTS — the beats that happened since your last line, numbered #1, #2, #3… IN THE EXACT ORDER THEY OCCURRED, each with a "+Xs" time offset confirming that order. This is what you narrate now.
 
-Call THIS SEGMENT in ONE short line — you are called again every few seconds, so do NOT try to say everything. Narrate strictly in beat order: #1 before #2 before #3, and so on — NEVER mention a higher-numbered beat before a lower-numbered one, even if the later beat is more exciting. A later event can get more energy or more words, but it must still come later in the sentence. Skipping a beat entirely is fine; reordering it is not — an out-of-order call falls out of sync with the (delayed) broadcast video the audience is watching. Within that order, put your energy on the highest-[intensity] beat and its implication ("Vex opens up B — CTs are short one defender", "bomb live on A, CTs scrambling back", "TRIPLE KILL — Ts in complete control"). Drop ambient noise (scattered gunfire, partial flashes) — never the headline.
+Call THIS SEGMENT in ONE short line, continuing naturally from your last line — you are called again every few seconds, so do NOT try to say everything. Narrate strictly in beat order: #1 before #2 before #3, and so on — NEVER mention a higher-numbered beat before a lower-numbered one, even if the later beat is more exciting. A later event can get more energy or more words, but it must still come later in the sentence. Skipping a beat entirely is fine; reordering it is not — an out-of-order call falls out of sync with the (delayed) broadcast video the audience is watching. Within that order, put your energy on the highest-[intensity] beat and its implication ("Vex opens up B — CTs are short one defender", "bomb live on A, CTs scrambling back", "TRIPLE KILL — Ts in complete control"). Drop ambient noise (scattered gunfire, partial flashes) — never the headline.
 
 Events and players may carry a "location" (e.g. "Long", "B site"). Weave callouts in naturally where they add clarity, but NEVER invent one not given.
 
-Some events carry a "→ NvM" tag right after them (e.g. "→ 2v3") — that is the EXACT alive count the instant after that event happened, ground truth straight from the game state. If you state an alive count, it must come from one of these tags or from the Alive: line in MATCH STATE — verbatim. NEVER compute, infer, or guess an alive count yourself by mentally subtracting kills you've seen; that's exactly how a "1 T left" call ends up wrong when 2 are actually alive.
+Some events carry a "→ NvM" tag right after them (e.g. "→ 2v3") — that is the EXACT alive count the instant after that event happened, ground truth straight from the game state. If you state an alive count, it must come from one of these tags or from the Alive: line in MATCH STATE — verbatim. NEVER compute, infer, or guess an alive count yourself by mentally subtracting kills you've seen; that's exactly how a "1 T left" call ends up wrong when 2 are actually alive. Alive counts also RESET to full team size at the start of every new round (watch for the Round number changing in MATCH STATE) — never carry a count forward from an earlier round in your own broadcast history.
 
-If a past passage already covers an event, you've called it — do not repeat it. Keep the through-line: one continuous broadcast. If EVERY beat in THIS SEGMENT'S EVENTS is already covered by your history, restating it in different words is still a repeat — don't. Instead pivot entirely to fresh expert analysis (economy trajectory, momentum, a tactical read, what's likely next), exactly as you would for a pure analysis beat below.
+If everything in THIS SEGMENT'S EVENTS was already covered in an earlier turn, restating it in different words is still a repeat — don't. Instead pivot entirely to fresh expert analysis (economy trajectory, momentum, a tactical read, what's likely next), exactly as you would for a pure analysis beat below.
 
 Don't just report what happened — say what it means. For every line, land at least one grain of WHY it matters: the tactical implication, the momentum shift, the economy cost, or how risky/smart the play was. A list of events is a stat sheet; a shoutcaster gives the audience a read.
 
-If the only event is an "analysis" beat, the action has PAUSED — there is no new play to call. Fill the moment like an expert analyst: read the economy, map control, momentum, the score storyline, or what to watch for next, drawn from the TACTICAL SITUATION. Do NOT invent kills, plants, or events that did not happen, and do not repeat anything already in your history.`;
+Every word should earn its place. Generic hype filler ("and the crowd goes wild", "what a moment", "here we go") says nothing a real analyst couldn't have said about any round — cut it and spend the word budget on the specific tactical or economic detail instead. If you don't have a fresh, concrete read on THIS segment, say less rather than padding with stock phrases.
+
+If the only event is an "analysis" beat, the action has PAUSED — there is no new play to call. Fill the moment like an expert analyst: read the economy, map control, momentum, the score storyline, or what to watch for next, drawn from the TACTICAL SITUATION. Do NOT invent kills, plants, or events that did not happen, and do not repeat anything you've already said.
+
+ANCHOR TAG — only when you skip beat #1: this clip airs at the timestamp of whichever beat you open on, so if your narration's first concrete event is NOT #1 (you judged it not worth saying and started from #2, #3, etc.), prefix your ENTIRE response with \`<from:N>\` where N is the lowest beat number you actually narrate — e.g. \`<from:2>\` — then continue as normal on the same line. If you narrate #1 at all, or your line is a pure analysis pivot not tied to a specific later beat, omit the tag completely.`;
 
 // --- plain mode --------------------------------------------------------------
 // Raw prose — no engine-specific formatting. Works with any TTS provider.
@@ -126,12 +137,26 @@ ${CONTINUITY_BLOCK}`;
 // --- gemini mode -------------------------------------------------------------
 // Uses Gemini's 3-part script architecture (PERFORMANCE / CONTEXT / TRANSCRIPT)
 // with inline [tag] annotations for expressive voice control.
-// The PERFORMANCE block is fixed and prepended in code; the LLM outputs CONTEXT + TRANSCRIPT only.
-const PERFORMANCE_BLOCK = `### PERFORMANCE
+// The PERFORMANCE block is built in CODE and prepended AFTER the LLM responds —
+// it's a voice-direction header for the TTS engine, never seen or generated by
+// the LLM. That makes its Pacing line a lever we control directly (no dependency
+// on the LLM following an instruction), so it's driven by `pace` here rather
+// than being a fixed string.
+type Pace = "normal" | "busy" | "urgent";
+
+function buildPerformanceBlock(pace: Pace): string {
+  const pacingLine =
+    pace === "urgent"
+      ? "Heavy backlog — maximum-speed delivery, rapid-fire and telegraphic, no dramatic pauses, get through it fast."
+      : pace === "busy"
+      ? "Backlog building — deliver this line quickly and tightly, minimal pauses between words."
+      : "Punchy and dynamic. Fast during site executes and multi-kills, measured and analytical during economy rounds. Never flat, never monotone.";
+  return `### PERFORMANCE
 Voice: Fenrir
 Style: Legendary Tier-1 esports shoutcaster — gritty, explosive, and infectious. Rapid-fire play-by-play that accelerates during kills and chaos, drops to tense analytical calm during buy phases and slow defaults.
 Accent: British English with a crisp London broadcast accent.
-Pacing: Punchy and dynamic. Fast during site executes and multi-kills, measured and analytical during economy rounds. Never flat, never monotone.`;
+Pacing: ${pacingLine}`;
+}
 
 function buildSystemPromptGemini(targetWords: number): string {
   return `You are a legendary Tier-1 Counter-Strike 2 esports shoutcaster, in the booth for a live broadcast like ESL or BLAST. You receive the current match state and a segment of game events and produce spoken commentary formatted for Gemini's Text-to-Speech engine. Your commentary must reflect GENUINE understanding of what is happening and why it matters to the viewer.
@@ -169,23 +194,30 @@ export class CommentaryWriter implements ICommentaryWriter {
   ) {}
 
   async write(ctx: CommentaryContext): Promise<CommentaryResult | null> {
-    const { beats, snapshot, passageHistory } = ctx;
+    const { beats, snapshot, passageHistory, queueDepth } = ctx;
     if (!this.client) return null;
     if (beats.length === 0) return null;
 
+    // Pace tier from how backed up the broadcast is — drives the word-budget
+    // cap below, a punctuation/delivery instruction in the prompt, and (gemini
+    // mode) the TTS engine's own Pacing directive. Thresholds are tune-by-ear.
+    const pace: Pace = queueDepth >= 3 ? "urgent" : queueDepth >= 1 ? "busy" : "normal";
+
     // Word budget. Play-by-play scales with beat count: floor 14 (a full single-event
     // call), +2/beat, cap 20 (~9s audio — safe back-to-back under clipExpiryGraceMs).
+    // Under backlog the cap drops further (14 busy, 10 urgent) — shorter audio is
+    // the most dependable way to stop a clip eating into the next one's slot.
     // An analysis filler only ever fires when the pipeline is idle (nothing queued behind
     // it), so it gets a much fuller budget to actually deliver downtime analysis instead
     // of a clipped half-sentence.
     const isAnalysis = beats.length === 1 && beats[0].type === "analysis";
+    const wordCap = pace === "urgent" ? 10 : pace === "busy" ? 14 : 20;
     const targetWords = isAnalysis
       ? 30
-      : Math.min(20, 14 + Math.max(0, beats.length - 1) * 2);
+      : Math.min(wordCap, 14 + Math.max(0, beats.length - 1) * 2);
 
     // Relative recency reads better for the LLM than epoch milliseconds.
     const now = Date.now();
-    const secondsAgo = (t: number) => Math.max(0, Math.round((now - t) / 100) / 10);
 
     // Narrate in the order things actually happened. Chronological keeps the play-by-play
     // honest to the timeline; energy/emphasis comes from the [intensity] tag, not order.
@@ -200,31 +232,12 @@ export class CommentaryWriter implements ICommentaryWriter {
       `Round ${snapshot.currentRound} | Phase: ${snapshot.roundPhase} | Score: CT ${snapshot.scoreCT} – T ${snapshot.scoreT}` +
       ` | Alive: CT ${snapshot.aliveCT} / T ${snapshot.aliveT} | Bomb: ${bombLine}`;
 
-    // --- history as readable lines + flat exclusion list ---------------------
-    // Presented as plain text so the LLM doesn't have to parse JSON structure
-    // to find the no-repeat signal. Round labels help it understand age.
-    let historyBlock = "";
-    let coveredEvents: string[] = [];
-    if (passageHistory.length > 0) {
-      const historyLines = passageHistory.map(p => {
-        const agoS = Math.round(secondsAgo(p.anchorTs));
-        return `[Round ${p.round}, ${formatClock(p.anchorTs)}, ${agoS}s ago] "${p.text}"\n  ↳ covered: ${p.basedOn.join(" | ")}`;
-      });
-      coveredEvents = passageHistory.flatMap(p => p.basedOn);
-      historyBlock =
-        `━━━ BROADCAST HISTORY — ALREADY SPOKEN AND HEARD BY THE AUDIENCE ━━━\n` +
-        `DO NOT REPEAT, REPHRASE, OR ECHO ANY OF THE FOLLOWING. VARY YOUR LANGUAGE.\n\n` +
-        historyLines.join("\n\n") + "\n\n" +
-        `━━━ EVENTS ALREADY COVERED — SKIP THESE, AUDIENCE KNOWS ━━━\n` +
-        coveredEvents.map(e => `• ${e}`).join("\n") + "\n\n";
-    }
-
     // --- current events (plain text, not JSON) --------------------------------
     // Each line is prefixed with an explicit ordinal (#1, #2, …) AND its time offset
-    // from the start of the segment. The ordinal is the part the LLM must obey literally
-    // when sequencing the call ("first… then…") — the +Xs offset is just corroborating
-    // evidence, since models have been observed reordering by excitement instead of time
-    // when only a timestamp is given.
+    // from the start of the segment — a secondary guard against mis-sequencing now
+    // that the primary defense is conversational continuity (see write() below):
+    // each call only ever has to place THIS segment's (typically few) new beats
+    // after its own last line, not synthesize order across a described history.
     const eventLines = byTime.map((e, i) => {
       const offset = ((e.timestamp - segmentStart) / 1000).toFixed(1);
       const loc = e.location ? ` [${e.location}]` : "";
@@ -235,12 +248,24 @@ export class CommentaryWriter implements ICommentaryWriter {
       return `  #${i + 1} +${offset}s [${e.intensity}] ${e.type}: ${e.summary}${loc}${alive}`;
     }).join("\n");
 
-    const userPrompt =
+    // Punctuation/delivery instruction scaled to backlog — fewer commas/dashes
+    // means fewer TTS-inserted pauses, shortening the clip for the same words.
+    const paceLine =
+      pace === "urgent"
+        ? `\n\n⚠️ HEAVY BACKLOG (${queueDepth} clips waiting) — maximum urgency: telegraphic, almost no internal punctuation, shortest phrasing that still makes sense. Cut hype filler and decorative adjectives first, NOT the implication — a terse expert read beats a longer empty one. Drop hedge phrases ("and the action continues", "let's see what happens") entirely. A heavy batch like this is usually one fight unfolding through several small updates (alive count ticking down, HP dropping, etc.) — that fact isn't itself the story, the OUTCOME is. Don't narrate it as a count-up; skip straight to the result and what it means, and only cite a specific number if that exact number is the noteworthy thing (e.g. a 1vX clutch).`
+        : pace === "busy"
+        ? `\n\n⚠️ Backlog building (${queueDepth} clip${queueDepth === 1 ? "" : "s"} waiting) — keep this line tight: short clauses, minimal commas/dashes, no filler words. Still land the implication — don't strip it to save space. If this batch is several beats from one ongoing fight, don't track the same fact (alive count, HP, etc.) through each step — go straight to where it ended up and why that matters, citing a number only when the number itself is the point.`
+        : "";
+
+    // This becomes both the final turn for THIS call and — once the LLM responds —
+    // the value stored on the resulting Passage, so it can be replayed verbatim as
+    // a historical `user` turn in future calls (see the messages array below).
+    const segmentUserContent =
       `MATCH STATE:\n${matchStateLine}\n\n` +
       `TACTICAL SITUATION:\n${ctx.tacticalContext}\n\n` +
-      historyBlock +
       `━━━ THIS SEGMENT'S EVENTS — NOT YET SPOKEN, NUMBERED IN OCCURRENCE ORDER (narrate #1, #2, #3… in this exact sequence) ━━━\n` +
-      eventLines;
+      eventLines +
+      paceLine;
 
     const id = `b${String(ctx.batchIndex).padStart(4, "0")}`;
     const eventList = beats.map(b => `[${b.intensity}] ${b.summary}`).join(" | ");
@@ -254,11 +279,20 @@ export class CommentaryWriter implements ICommentaryWriter {
         alive: `CT ${snapshot.aliveCT} / T ${snapshot.aliveT}`,
         beatCount: beats.length,
         targetWords,
-        historyCount: passageHistory.length,
-        coveredCount: coveredEvents.length,
+        historyTurns: passageHistory.length,
+        queueDepth,
+        pace,
       },
-      `📤 ${id} sending to LLM (${beats.length} beats → ${targetWords}w limit, ${passageHistory.length} history, ${coveredEvents.length} covered events) — ${eventList}`
+      `📤 ${id} sending to LLM (${beats.length} beats → ${targetWords}w limit, ${passageHistory.length} history turns, queueDepth=${queueDepth}/${pace}) — ${eventList}`
     );
+
+    // Replay prior passages as REAL user/assistant turns (what was actually asked,
+    // what the caster actually said) rather than describing them in text — the model
+    // just continues its own broadcast instead of being told to obey a recap.
+    const historyMessages = passageHistory.flatMap(p => [
+      { role: "user" as const, content: p.userTurn },
+      { role: "assistant" as const, content: p.text },
+    ]);
 
     const t0 = Date.now();
     try {
@@ -268,9 +302,10 @@ export class CommentaryWriter implements ICommentaryWriter {
         model: MODEL,
         messages: [
           { role: "system", content: this.mode === "gemini" ? buildSystemPromptGemini(targetWords) : buildSystemPromptPlain(targetWords) },
-          { role: "user", content: userPrompt },
+          ...historyMessages,
+          { role: "user", content: segmentUserContent },
         ],
-        temperature: 0.85,         // high creativity — shoutcasting should feel spontaneous
+        temperature: 0.65,         // high creativity — shoutcasting should feel spontaneous
         // Headroom for the spoken line (~1.6 tokens/word); gemini also emits a CONTEXT
         // sentence + inline tags, so it needs a larger fixed allowance on top.
         max_tokens: Math.ceil(targetWords * 2) + (this.mode === "gemini" ? 1000 : 16),
@@ -280,19 +315,32 @@ export class CommentaryWriter implements ICommentaryWriter {
         // pass so the small budget goes to the spoken line itself.
         reasoning: { effort: "low" },
       });
-      const raw = json.choices?.[0]?.message?.content?.trim();
+      let raw = json.choices?.[0]?.message?.content?.trim();
       if (!raw) return null;
+
+      // Pull off the optional leading "<from:N>" anchor tag before any other
+      // processing, so it never leaks into the gemini CONTEXT/TRANSCRIPT split,
+      // the spoken transcript, or the TTS input. See ANCHOR TAG in CONTINUITY_BLOCK.
+      const { raw: stripped, fromBeat } = stripAnchorTag(raw, byTime.length);
+      raw = stripped;
+      const effectiveAnchorTs = fromBeat != null ? byTime[fromBeat - 1].timestamp : segmentStart;
+      if (fromBeat != null) {
+        log.info(
+          { batch: id, fromBeat, shiftMs: effectiveAnchorTs - segmentStart },
+          `⏩ ${id} LLM skipped to beat #${fromBeat} — anchor shifted +${effectiveAnchorTs - segmentStart}ms`
+        );
+      }
 
       // Speech gets the full text (Gemini needs the PERFORMANCE/CONTEXT scaffolding
       // for voice control); the transcript keeps only the spoken words.
-      const speech = this.mode === "gemini" ? `${PERFORMANCE_BLOCK}\n\n${raw}` : raw;
+      const speech = this.mode === "gemini" ? `${buildPerformanceBlock(pace)}\n\n${raw}` : raw;
       const transcript = this.mode === "gemini" ? extractSpokenTranscript(raw) : raw;
       const words = transcript.split(/\s+/).filter(Boolean).length;
       log.info(
         { batch: id, latencyMs: Date.now() - t0, words },
         `✅ ${id} LLM (${words}w) → "${transcript.slice(0, 300)}${transcript.length > 300 ? "…" : ""}"`
       );
-      return { speech, transcript };
+      return { speech, transcript, userTurn: segmentUserContent, effectiveAnchorTs };
     } catch (err) {
       log.error({ err, latencyMs: Date.now() - t0 }, "synthesis failed");
       return null;
@@ -310,4 +358,20 @@ export class CommentaryWriter implements ICommentaryWriter {
 function extractSpokenTranscript(raw: string): string {
   const m = raw.match(/#{2,}\s*TRANSCRIPT\s*\r?\n([\s\S]*)$/i);
   return (m ? m[1] : raw).trim();
+}
+
+/**
+ * Strip a leading "<from:N>" anchor tag (see ANCHOR TAG in CONTINUITY_BLOCK) and
+ * return the beat number it names, clamped to a valid 1-based beat index. The
+ * tag is stripped unconditionally — even an out-of-range N — so a malformed tag
+ * can never leak into spoken/TTS text. Returns `fromBeat: null` when no valid
+ * shift was requested (no tag, or N <= 1, meaning "no shift").
+ */
+export function stripAnchorTag(raw: string, beatCount: number): { raw: string; fromBeat: number | null } {
+  const m = raw.match(/^\s*<from:(\d+)>\s*/i);
+  if (!m) return { raw, fromBeat: null };
+  const stripped = raw.slice(m[0].length);
+  const n = Number(m[1]);
+  const fromBeat = n > 1 && n <= beatCount ? n : null;
+  return { raw: stripped, fromBeat };
 }
