@@ -25,8 +25,9 @@ export class GameEventBuffer<T = GsiEvent> {
 
   /**
    * Return and remove every event with `timestamp <= cutoff`, retaining newer ones
-   * for a later window. Used by the settling watermark so only "settled" events are
-   * interpreted. Order is preserved. Entries must carry a numeric `timestamp`.
+   * for a later window. Used by the interpreter's watermark to drain exactly the
+   * events up to the point it's processing. Order is preserved. Entries must carry
+   * a numeric `timestamp`.
    */
   flushOlderThan(cutoff: number): T[] {
     const ready: T[] = [];

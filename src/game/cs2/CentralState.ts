@@ -5,9 +5,8 @@ import { logger } from "../../utils/logger.js";
 
 const log = logger.child({ service: "[CentralState]" });
 
-// How long timestamped snapshots are retained in the ring. Must comfortably exceed
-// delayMs + settleMs so the interpreter (and the lull filler) can always look back
-// to the moment currently on the delayed broadcast.
+// How long timestamped snapshots are retained in the ring — generous headroom so the
+// interpreter and lull filler can always look back to the moment they're processing.
 const SNAPSHOT_RETAIN_MS = 35_000;
 
 /**
@@ -126,7 +125,7 @@ export class CentralState {
       }
     }
     if (missing.length > 0) {
-      log.warn({ missing }, `⚠️  ${missing.length} recently-seen player(s) missing from this GSI tick: ${missing.join(", ")}`);
+      log.trace({ missing }, `⚠️  ${missing.length} recently-seen player(s) missing from this GSI tick: ${missing.join(", ")}`);
     }
   }
 

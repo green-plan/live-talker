@@ -123,26 +123,18 @@ export interface Passage {
  *
  * Pipeline overview (delayed storyteller):
  *   GsiListener (raw events + state)
- *     → [every interpretMs] BeatDetector → beats
+ *     → [every tick] BeatDetector → beats
  *     → BeatBatcher (time-windowed) → SealedBatch
  *     → TextStage (sequential, in game order) → PlannedClip
  *     → SpeechStage (parallel pool) → RenderedClip
  *     → Conductor (play head, `delayMs` behind real time) → AudioPlayer / Recorder
  */
 export interface OrchestratorConfig {
-  /** How often the conductor poll / housekeeping tick runs. (ms) */
+  /** How often the housekeeping tick runs — drives sealing, the conductor poll,
+   *  and beat detection (interpretWindow runs every tick). (ms) */
   tickMs: number;
-  /** How often the beat detector drains the raw buffer and produces beats. (ms) */
-  interpretMs: number;
   /**
-   * Settling watermark. The beat detector only processes data older than `now - settleMs`,
-   * so a window is complete (no late event will still arrive for it) before it's read.
-   * Free to spend because the broadcast already runs delayMs behind real time.
-   * Must be ≥ interpretMs. (ms)
-   */
-  settleMs: number;
-  /**
-   * Settled-time silence before a synthetic "analysis" filler beat is injected to fill
+   * Silence (event time) before a synthetic "analysis" filler beat is injected to fill
    * dead air. Only fires in live/freezetime, with players connected, when the whole
    * pipeline is idle — so it never talks over real action. (ms)
    */
@@ -150,8 +142,6 @@ export interface OrchestratorConfig {
   /**
    * Idle gap that seals the current beat cluster. A batch closes when no new beat
    * arrives within this window after the last one — "island of beats" detection.
-   * Should be at least 2× interpretMs so a momentary quiet interpret window doesn't
-   * prematurely seal a still-active firefight. (ms)
    */
   beatGapMs: number;
   /**

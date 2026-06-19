@@ -80,15 +80,14 @@ export class ShoutCaster {
   private lastRealizedDelayMs = 0;
   private lastGaugeAt = 0;
 
-  // --- settling watermark ---
-  /** Highest settled timestamp already interpreted. Everything ≤ this has been processed. */
+  // --- watermark ---
+  /** Highest timestamp already interpreted. Everything ≤ this has been processed. */
   private lastWatermark = 0;
   /** Watermark of the last window that produced a real beat — drives the lull filler. */
   private lastRealBeatWatermark = 0;
 
   private running = false;
   private loop: ReturnType<typeof setInterval> | null = null;
-  private interpretLoop: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     cfg: OrchestratorConfig,
@@ -121,16 +120,13 @@ export class ShoutCaster {
     void this.recorder?.start();
     this.beatDebugRecorder?.start();
     this.loop = setInterval(() => this.tick(), this.cfg.tickMs);
-    this.interpretLoop = setInterval(() => this.interpretWindow(), this.cfg.interpretMs);
     log.info({ cfg: this.cfg }, "orchestrator started (delayed storyteller)");
   }
 
   async stop(): Promise<void> {
     this.running = false;
     if (this.loop) clearInterval(this.loop);
-    if (this.interpretLoop) clearInterval(this.interpretLoop);
     this.loop = null;
-    this.interpretLoop = null;
     await this.recorder?.stop();
     await this.beatDebugRecorder?.stop();
     log.info("orchestrator stopped");
@@ -142,21 +138,20 @@ export class ShoutCaster {
   // the main tick so windows close on schedule even in silent windows.
 
   private interpretWindow(): void {
-    const now = Date.now();
-    const watermark = now - this.cfg.settleMs;
-    // On the first run, start the window one interpret-tick wide ending at the watermark.
+    const watermark = Date.now();
+    // On the first run, start the window one tick wide ending at the watermark.
     if (this.lastWatermark === 0) {
-      this.lastWatermark = watermark - this.cfg.interpretMs;
+      this.lastWatermark = watermark - this.cfg.tickMs;
       this.lastRealBeatWatermark = watermark;
     }
-    if (watermark <= this.lastWatermark) return; // nothing new has settled yet
+    if (watermark <= this.lastWatermark) return; // clock hasn't advanced since the last tick
 
-    // Drain settled events regardless, so the buffer never backs up.
+    // Drain events older than the watermark regardless, so the buffer never backs up.
     const rawEvents = this.eventBuffer.flushOlderThan(watermark);
     const snapshots = this.centralState.getSnapshotsBetween(this.lastWatermark, watermark);
 
-    const settledSnap = snapshots.length > 0 ? snapshots[snapshots.length - 1].snapshot : null;
-    if (!settledSnap || settledSnap.players.length === 0) {
+    const latestSnap = snapshots.length > 0 ? snapshots[snapshots.length - 1].snapshot : null;
+    if (!latestSnap || latestSnap.players.length === 0) {
       this.lastWatermark = watermark; // warmup / nobody connected — just advance
       return;
     }
@@ -177,7 +172,7 @@ export class ShoutCaster {
     if (hasSpeakableBeat(beats)) {
       this.lastRealBeatWatermark = watermark;
     } else {
-      this.maybeFillDeadAir(watermark, settledSnap);
+      this.maybeFillDeadAir(watermark, latestSnap);
     }
 
     this.lastWatermark = watermark;
@@ -185,7 +180,7 @@ export class ShoutCaster {
 
   /**
    * Inject a single synthetic "analysis" beat to fill genuine dead air. Fires only when
-   * the broadcast has been silent for lullMs of settled time, the whole pipeline is idle
+   * the broadcast has been silent for lullMs, the whole pipeline is idle
    * (so we never talk over real action), and the match is in live/freezetime. The beat is
    * anchored at the watermark so it airs at watermark + delayMs — exactly the moment now
    * showing on the delayed broadcast — and carries the tactical state for that moment.
@@ -242,8 +237,13 @@ export class ShoutCaster {
 
   private tick(): void {
     const now = Date.now();
+    // Interpret every tick — there's nothing to gain by throttling this further: each
+    // GSI payload is processed synchronously and is final the instant it's digested, so
+    // there's no "settling" to wait for. The lull filler self-limits via lastRealBeatWatermark.
+    this.interpretWindow();
+
     // Seal clusters whose island is provably complete. The batcher runs on event time,
-    // so it seals against the settled watermark (set by interpretWindow), not wall now.
+    // so it seals against the watermark (set by interpretWindow), not wall now.
     // Each batch is stamped with the snapshot AT ITS LAST BEAT (the moment it narrates),
     // not the live/future state — otherwise the caster spoils events that haven't aired.
     const sealed = this.batcher.collectSealed(

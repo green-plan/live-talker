@@ -59,9 +59,12 @@ const speechSynth = MOCK_SPEECH
   ? new MockSpeechSynthesizer(MOCK_SPEECH_DELAY)
   : new SpeechSynthesizer(orClient);
 
+// Filesystem-safe, human-readable local timestamp, e.g. "2026-06-18_13-52-00".
+const sessionStamp = new Date().toLocaleString("sv-SE").replace(/[: ]/g, (m) => (m === " " ? "_" : "-"));
+
 const broadcastPath = RECORD_BROADCAST
   ? (RECORD_BROADCAST === "true"
-      ? path.join(ARTIFACT_DIR, `broadcast-${Date.now()}.wav`)
+      ? path.join(ARTIFACT_DIR, `broadcast-${sessionStamp}.wav`)
       : RECORD_BROADCAST)
   : undefined;
 const recorder = broadcastPath ? new BroadcastRecorder(broadcastPath) : undefined;
