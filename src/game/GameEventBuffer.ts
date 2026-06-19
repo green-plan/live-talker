@@ -23,13 +23,6 @@ export class GameEventBuffer<T = GsiEvent> {
     }
   }
 
-  /** Return and empty the current event cache atomically. */
-  flushSlice(): T[] {
-    const slice = this.events;
-    this.events = [];
-    return slice;
-  }
-
   /**
    * Return and remove every event with `timestamp <= cutoff`, retaining newer ones
    * for a later window. Used by the settling watermark so only "settled" events are
@@ -45,9 +38,5 @@ export class GameEventBuffer<T = GsiEvent> {
     }
     this.events = keep;
     return ready;
-  }
-
-  getLength(): number {
-    return this.events.length;
   }
 }

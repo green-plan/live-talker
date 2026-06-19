@@ -41,9 +41,9 @@ export class CentralState {
    * name/side and when they were last seen. Side-channel source of truth, not a
    * substitute for per-tick alive counts (those are recomputed fresh below and
    * are already verified correct against real GSI captures). The roster's only
-   * job is to make "who's on which side" queryable, and to surface a warning if
-   * a future tick ever drops players the roster expects to still be around —
-   * something never observed in practice but worth catching if it ever happens.
+   * job is to surface a warning if a future tick ever drops players it expects
+   * to still be around — something never observed in practice but worth catching
+   * if it ever happens.
    */
   private roster = new Map<string, { name: string; team: "CT" | "T"; lastSeenTs: number }>();
 
@@ -105,15 +105,6 @@ export class CentralState {
     while (this.history.length > 0 && this.history[0].ts < cutoff) {
       this.history.shift();
     }
-  }
-
-  getSnapshot(): GameSnapshot {
-    return { ...this.snapshot, players: [...this.snapshot.players] };
-  }
-
-  /** All-time roster — who's been seen this session and which side they're on. */
-  getRoster(): ReadonlyMap<string, { name: string; team: "CT" | "T"; lastSeenTs: number }> {
-    return this.roster;
   }
 
   /**
