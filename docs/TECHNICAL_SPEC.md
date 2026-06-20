@@ -139,6 +139,17 @@ already passed by the time the earlier one finishes.
 This is the core product decision: a deliberate delay buys complete, ordered, accurate
 commentary. It is not a latency bug to be optimized away.
 
+### Playback is a swappable sink
+
+"Play it" doesn't hardcode where the audio actually goes — desktop playback and a
+browser-based overlay (for OBS, broadcasting to any number of connected viewers over
+a control channel, with a manual pause that stops every further LLM/TTS call until
+resumed) are interchangeable implementations of one playback seam, chosen at the
+composition root. The conductor's own ordering/elastic-delay guarantees above hold
+identically regardless of which one is active — a disconnected or slow playback
+target degrades locally (a clip waits, then proceeds) rather than stalling the
+broadcast.
+
 ### Pickup is deliberately deferred within the floor
 
 A sealed batch isn't necessarily handed to the writing stage the instant it seals. How

@@ -6,8 +6,10 @@ import path from "path";
 import sound from "sound-play";
 import { TEMP_DIR, IS_WSL_ENV, toWindowsPath } from "../utils/tempDir.js";
 import { logger } from "../utils/logger.js";
+import type { RenderedClip } from "../types/pipeline.js";
+import type { IAudioSink } from "../orchestrator/contracts.js";
 
-const log = logger.child({ service: "[AudioPlayer]" });
+const log = logger.child({ service: "[WslAudioPlayer]" });
 const execAsync = promisify(exec);
 
 async function playFileWsl(filePath: string): Promise<void> {
@@ -43,15 +45,17 @@ async function playFileWsl(filePath: string): Promise<void> {
 }
 
 /**
- * AudioPlayer — "The Speaker".
+ * WslAudioPlayer — "The Speaker".
  *
- * Pure playback primitive. Queue management and expiry logic live in the
- * Shoutcast orchestrator.
+ * Pure playback primitive, routed through the desktop's own audio output
+ * (Windows Media Player via PowerShell on WSL, `sound-play` elsewhere). Queue
+ * management and expiry logic live in the Shoutcast orchestrator.
  */
-export class AudioPlayer {
+export class WslAudioPlayer implements IAudioSink {
   public isPlaying: boolean = false;
 
-  async play(filePath: string): Promise<void> {
+  async play(clip: RenderedClip): Promise<void> {
+    const { filePath } = clip;
     log.debug({ filePath }, "playback start");
     this.isPlaying = true;
     const t0 = Date.now();

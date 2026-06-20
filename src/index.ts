@@ -15,9 +15,11 @@ import { CommentaryWriter, type TtsMode } from "./synthesis/cs2/CommentaryWriter
 import { SpeechSynthesizer } from "./infra/SpeechSynthesizer.js";
 import { MockCommentaryWriter } from "./synthesis/MockCommentaryWriter.js";
 import { MockSpeechSynthesizer } from "./infra/MockSpeechSynthesizer.js";
-import { AudioPlayer } from "./infra/AudioPlayer.js";
+import { WslAudioPlayer } from "./infra/WslAudioPlayer.js";
+import { startOverlayService } from "./infra/OverlayServer.js";
 import { startGsiService } from "./infra/cs2/GsiListener.js";
 import { ShoutCaster } from "./orchestrator/ShoutCaster.js";
+import type { IAudioSink } from "./orchestrator/contracts.js";
 import { DEFAULT_ORCHESTRATOR_CONFIG } from "./config.js";
 import { ARTIFACT_DIR } from "./utils/tempDir.js";
 
@@ -33,12 +35,17 @@ const MOCK_SPEECH_DELAY = Number(process.env.MOCK_SPEECH_DELAY_MS ?? 900);
 // RECORD_BROADCAST=true → save the whole session as one WAV with real timing;
 // or set it to an explicit output path.
 const RECORD_BROADCAST = process.env.RECORD_BROADCAST;
+// OVERLAY=true → audio airs through the browser-based overlay (for OBS's
+// "Control audio via OBS" browser source) instead of desktop playback.
+const OVERLAY = process.env.OVERLAY === "true";
+const OVERLAY_PORT = Number(process.env.OVERLAY_PORT ?? PORT + 2);
 
 if (MOCK_TEXT) log.info("MOCK_TEXT — using mock LLM, no API key required for text synthesis");
 if (MOCK_SPEECH) log.info("MOCK_SPEECH — using mock TTS (Windows SAPI), no API key required for speech");
 if (!MOCK_TEXT && !OPENROUTER_API_KEY) log.warn("OPENROUTER_API_KEY not set — text synthesis will be skipped");
 if (!MOCK_SPEECH && !OPENROUTER_API_KEY) log.warn("OPENROUTER_API_KEY not set — speech synthesis will be skipped");
 log.info({ ttsMode: TTS_MODE }, "TTS script mode");
+if (OVERLAY) log.info({ port: OVERLAY_PORT }, "OVERLAY — audio airs through the browser overlay instead of desktop playback");
 
 // One shared HTTP client for all OpenRouter calls — synthesizers receive the
 // abstraction, not the raw credential.
@@ -49,7 +56,8 @@ const eventBuffer = new GameEventBuffer(1000);
 const navMap = new NavMap();
 const centralState = new CentralState(navMap);
 const interpreter = new BeatDetector();
-const audioPlayer = new AudioPlayer();
+const overlay = OVERLAY ? startOverlayService(OVERLAY_PORT) : undefined;
+const audioSink: IAudioSink = overlay ? overlay.sink : new WslAudioPlayer();
 
 const textSynth = MOCK_TEXT
   ? new MockCommentaryWriter(MOCK_TEXT_DELAY)
@@ -84,10 +92,13 @@ const shoutCaster = new ShoutCaster(
   interpreter,
   textSynth,
   speechSynth,
-  audioPlayer,
+  audioSink,
   recorder,
   beatDebugRecorder
 );
+// The overlay's pause control toggles the orchestrator directly — wired after
+// construction since the sink is created before the orchestrator exists.
+overlay?.sink.onControl((enabled) => shoutCaster.setEnabled(enabled));
 shoutCaster.start();
 
 // Finalize the recording (and the rest) on a clean shutdown.

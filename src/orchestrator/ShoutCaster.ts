@@ -12,7 +12,7 @@ import { GameEventBuffer } from "../game/GameEventBuffer.js";
 import { BeatBatcher } from "./BeatBatcher.js";
 import { CentralState } from "../game/cs2/CentralState.js";
 import { BeatDetector } from "../game/cs2/BeatDetector.js";
-import { AudioPlayer } from "../infra/AudioPlayer.js";
+import type { IAudioSink } from "./contracts.js";
 import type { BroadcastRecorder } from "../audio/BroadcastRecorder.js";
 import type { BeatDebugRecorder } from "../audio/BeatDebugRecorder.js";
 import type { ICommentaryWriter, ISpeechSynthesizer, Pace } from "../synthesis/contracts.js";
@@ -122,7 +122,7 @@ export class ShoutCaster {
   private readonly interpreter: BeatDetector;
   private readonly commentaryWriter: ICommentaryWriter;
   private readonly speechSynth: ISpeechSynthesizer;
-  private readonly audioPlayer: AudioPlayer;
+  private readonly audioPlayer: IAudioSink;
   private readonly recorder?: BroadcastRecorder;
   private readonly beatDebugRecorder?: BeatDebugRecorder;
 
@@ -159,6 +159,9 @@ export class ShoutCaster {
 
   private running = false;
   private loop: ReturnType<typeof setInterval> | null = null;
+  /** When false, sealed batches are discarded before the LLM/TTS stages — no API
+   *  calls, no tokens spent. Beat detection keeps running so state stays warm. */
+  private enabled = true;
 
   constructor(
     cfg: OrchestratorConfig,
@@ -167,7 +170,7 @@ export class ShoutCaster {
     interpreter: BeatDetector,
     commentaryWriter: ICommentaryWriter,
     speechSynth: ISpeechSynthesizer,
-    audioPlayer: AudioPlayer,
+    audioPlayer: IAudioSink,
     recorder?: BroadcastRecorder,
     beatDebugRecorder?: BeatDebugRecorder
   ) {
@@ -351,7 +354,23 @@ export class ShoutCaster {
 
   // --- Stage 1: Text (sequential, in game order) -----------------------------
 
+  /** Toggled from the overlay's pause control. Discards whatever's already
+   *  sealed and waiting — resuming only picks up new beats going forward,
+   *  same as any other silent stretch (see invariant: silence is real). */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    log.info({ enabled }, `🎚️  shoutcasting ${enabled ? "resumed" : "paused"}`);
+  }
+
   private maybeStartText(): void {
+    if (!this.enabled) {
+      while (this.sealedQueue.length > 0) {
+        const batch = this.sealedQueue.shift()!;
+        this.settleDeadlines.delete(batch.index);
+        this.markRendered(batch.index, "FAILED");
+      }
+      return;
+    }
     if (this.textBusy || this.sealedQueue.length === 0) return;
     const head = this.sealedQueue[0];
 
@@ -596,7 +615,7 @@ export class ShoutCaster {
     // against that video (reads the file now, before playback cleanup removes it).
     this.recorder?.record(clip.filePath, clip.anchorTs, clip.transcript);
     try {
-      await this.audioPlayer.play(clip.filePath);
+      await this.audioPlayer.play(clip);
     } catch (err) {
       log.error({ err, batch: id }, `${id} playback error`);
     }

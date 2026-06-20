@@ -136,7 +136,7 @@ export interface Passage {
  *     → BeatBatcher (time-windowed) → SealedBatch
  *     → TextStage (sequential, in game order) → PlannedClip
  *     → SpeechStage (parallel pool) → RenderedClip
- *     → Conductor (play head, `delayMs` behind real time) → AudioPlayer / Recorder
+ *     → Conductor (play head, `delayMs` behind real time) → IAudioSink / Recorder
  */
 export interface OrchestratorConfig {
   /** How often the housekeeping tick runs — drives sealing, the conductor poll,

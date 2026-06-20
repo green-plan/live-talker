@@ -2,6 +2,10 @@
   <img src="docs/images/livetalker.png" alt="live—talker: a tiny AI broadcast crew" width="600">
 </p>
 
+<p align="center">
+  <a href="https://green-plan.github.io/live-talker/">🔗 Homepage</a>
+</p>
+
 Real-time AI esports shoutcaster for Counter-Strike 2. Taps into live match telemetry via Game State Integration, interprets events into narrative beats, batches them into story segments, generates commentary with an LLM, renders it to speech, and plays it back on a deliberate, configurable **broadcast delay** — so the system always has complete context before it speaks.
 
 ---
@@ -119,6 +123,17 @@ In OBS: **Settings → Advanced → Stream Delay**, or add a **Render Delay** fi
 capture source, set to match the broadcast delay (`delayMs` in `src/config.ts`). Route the
 caster's audio (and your mic, if you want to talk over it) on its own track with no added delay.
 
+To isolate the caster's audio as its own OBS track instead of playing it on the desktop, run
+`npm run dev:overlay` (builds the browser overlay, then starts the backend with it active) and
+add a **Browser Source** in OBS pointed at `http://localhost:3002/` (or your `OVERLAY_PORT`),
+with **Control audio via OBS** checked. The overlay page has a **pause shoutcasting** button
+that stops the LLM/TTS pipeline backend-wide (no API calls, no tokens spent) until resumed —
+useful when you're not actively streaming but want the process left running.
+
+<p align="center">
+  <img src="docs/images/overlay.png" alt="The browser overlay: live waveform, current line, and a timestamped shoutcast history" width="420">
+</p>
+
 ---
 
 ## WSL Note
@@ -145,3 +160,5 @@ Audio playback on WSL2 routes through the Windows audio stack via `powershell.ex
 | `TTS_MODE` | `plain` | `plain` or `gemini` (expressive inline tags) |
 | `LOG_LEVEL` | `info` | `trace` / `debug` / `info` / `warn` / `error` |
 | `RECORD_BROADCAST` | — | `true` or a file path to capture a full-session WAV |
+| `OVERLAY` | `false` | Air audio through the browser overlay (for OBS) instead of desktop playback |
+| `OVERLAY_PORT` | `PORT+2` | Port for the overlay's HTTP + WebSocket server |

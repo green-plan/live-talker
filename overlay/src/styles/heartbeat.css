@@ -1,0 +1,43 @@
+/* Broadcast "heartbeat" — every animated accent on the page ticks to the
+   same 135 BPM (60/135 ≈ 0.444s per beat). Ported verbatim from
+   homepage/src/layouts/Layout.astro. Shaped as a quick FLASH then a slower
+   fade (not a smooth sine breathe) — a sharp rise is what actually registers
+   as "pulsing" at a glance. */
+@keyframes beat-pulse-dot {
+	0% { opacity: 1; transform: scale(1); }
+	25% { opacity: 0.15; transform: scale(0.5); }
+	100% { opacity: 1; transform: scale(1); }
+}
+@keyframes beat-pulse-glow {
+	0% { opacity: 0.45; transform: scale(1); }
+	25% { opacity: 0.7; transform: scale(1.1); }
+	100% { opacity: 0.45; transform: scale(1); }
+}
+@keyframes beat-pulse-ring {
+	0% { box-shadow: 0 0 6px 0px rgba(0, 196, 224, 0.15); }
+	25% { box-shadow: 0 0 16px 2px rgba(0, 196, 224, 0.4); }
+	100% { box-shadow: 0 0 6px 0px rgba(0, 196, 224, 0.15); }
+}
+.beat-dot {
+	animation: beat-pulse-dot 0.889s ease-out infinite;
+}
+.beat-glow {
+	animation: beat-pulse-glow 0.889s ease-out infinite;
+	animation-fill-mode: backwards;
+}
+.beat-ring {
+	animation: beat-pulse-ring 0.889s ease-out infinite;
+	animation-fill-mode: backwards;
+}
+@keyframes beat-pulse-bar {
+	0% { transform: scaleY(1); }
+	25% { transform: scaleY(0.35); }
+	100% { transform: scaleY(1); }
+}
+.beat-bar {
+	transform-origin: bottom;
+	animation: beat-pulse-bar 0.889s ease-out infinite;
+	animation-fill-mode: backwards;
+}
+/* Deliberately NOT gated behind prefers-reduced-motion — matches the
+   homepage's rationale: showing the heartbeat off is the point. */

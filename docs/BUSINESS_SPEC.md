@@ -44,7 +44,7 @@ Because the system runs on delay, the LLM sees a sealed window of complete event
 
 ### A. API Cost Optimization
 
-The system batches events into short time windows. Only non-empty windows (those with at least one meaningful beat) produce an LLM + TTS call. In a typical 2-minute round with moderate action, this targets roughly **15–25 passages** — well within cost-efficient operating limits. Quiet freezetime periods produce at most one economy read, keeping token usage low during inactive phases.
+The system batches events into short time windows. Only non-empty windows (those with at least one meaningful beat) produce an LLM + TTS call. In a typical 2-minute round with moderate action, this targets roughly **15–25 passages** — well within cost-efficient operating limits. Quiet freezetime periods produce at most one economy read, keeping token usage low during inactive phases. Operators can also pause the broadcast entirely on demand — useful when the process is left running but nobody is actively watching — which stops every further LLM/TTS call until resumed, with no loss of warm match state in the meantime.
 
 ### B. Broadcast Delay Target
 
@@ -65,6 +65,7 @@ Each passage covers **one key beat** and stops (roughly a dozen spoken words). T
 | **Vocal Styles** | Dynamic energy via TTS mode (`plain` or Gemini expressive `[tag]` + PERFORMANCE blocks). | Multiple interacting co-casters, custom cloned voice synthesis. |
 | **Queueing** | Elastic broadcast delay, parallel TTS pool, in-order Conductor play head. | Audio mixing, overlaying music tracks automatically under the voice. |
 | **Recording** | Optional full broadcast capture to a single WAV with real timing gaps (`RECORD_BROADCAST`). | Cloud upload, clip sharing, highlight reels. |
+| **Audio Delivery** | Desktop playback, or an isolated browser-based overlay for OBS — its own audio track, a live visual of the current/past calls, and an on-demand pause control. | Cloud-hosted or multi-machine broadcasting beyond localhost. |
 
 ---
 

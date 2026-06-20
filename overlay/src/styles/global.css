@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/*
+ * Brand accent override — rotated off Tailwind's stock `cyan-400`
+ * (#22d3ee) toward a calmer, more blue-leaning hue with lower saturation,
+ * so the accent reads as "blue" rather than "teal/cyan". Matches
+ * homepage/src/styles/global.css — kept in sync by hand, since these are
+ * two independent subprojects.
+ */
+:root {
+	--color-cyan-300: #79cdec;
+	--color-cyan-400: #19afe6;
+	--color-cyan-500: #1487b8;
+}
+
+/*
+ * Background/border/text "slate" override — same reasoning as the cyan
+ * override above, but for the whole dark backdrop, rotated further toward
+ * blue with slightly lower chroma so it reads as "dark blue/indigo".
+ */
+:root {
+	--color-slate-100: oklch(96.8% 0.006 220);
+	--color-slate-200: oklch(92.9% 0.011 220);
+	--color-slate-300: oklch(86.9% 0.018 220);
+	--color-slate-400: oklch(70.4% 0.033 220);
+	--color-slate-500: oklch(55.4% 0.038 220);
+	--color-slate-700: oklch(37.2% 0.036 220);
+	--color-slate-800: oklch(27.9% 0.034 220);
+	--color-slate-900: oklch(20.8% 0.035 220);
+	--color-slate-950: oklch(12.9% 0.035 220);
+}
+
+html {
+	font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

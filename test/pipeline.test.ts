@@ -46,7 +46,8 @@ class FakePlayer {
   isPlaying = false;
   readonly plays: { file: string; at: number }[] = [];
   constructor(private readonly durations: Record<string, number> = {}) {}
-  async play(file: string): Promise<void> {
+  async play(clip: RenderedClip): Promise<void> {
+    const file = clip.filePath;
     this.isPlaying = true;
     this.plays.push({ file, at: Date.now() });
     await sleep(this.durations[file] ?? 10);
@@ -188,6 +189,28 @@ describe("TextStage (sequential storyteller)", () => {
       expect.stringContaining("[MOCK#2]"),
     ]);
     expect(sc.passageHistory.map((p: any) => p.index)).toEqual([1, 2, 3]);
+  });
+
+  it("discards sealed batches without calling the LLM while disabled (no tokens spent)", async () => {
+    const player = new FakePlayer();
+    const writer = new MockCommentaryWriter(0);
+    const sc: any = makeCaster({}, player, writer);
+    const T0 = Date.now();
+
+    sc.setEnabled(false);
+    sc.sealedQueue = [sealedBatch(1, T0), sealedBatch(2, T0 + 10)];
+    sc.maybeStartText();
+    await sleep(20);
+
+    expect(sc.sealedQueue).toHaveLength(0); // drained, not processed
+    expect(sc.passageHistory).toHaveLength(0); // never reached the writer
+    expect(sc.nextIndexToAir).toBe(3); // both skipped as FAILED, conductor still advances
+
+    sc.setEnabled(true);
+    sc.sealedQueue = [sealedBatch(3, T0 + 20)];
+    sc.maybeStartText();
+    await sleep(20);
+    expect(sc.passageHistory).toHaveLength(1); // resumes processing new beats normally
   });
 });
 
