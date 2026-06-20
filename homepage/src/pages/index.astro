@@ -1,0 +1,24 @@
+---
+import Layout from '../layouts/Layout.astro';
+import SiteNav from '../components/SiteNav.astro';
+import Hero from '../components/Hero.astro';
+import DelayExplainer from '../components/DelayExplainer.astro';
+import FullCrew from '../components/FullCrew.astro';
+import CommentaryShowcase from '../components/CommentaryShowcase.astro';
+import OpenSourceCTA from '../components/OpenSourceCTA.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+---
+
+<Layout>
+	<div class="flex min-h-screen flex-col">
+		<SiteNav />
+		<Hero />
+	</div>
+	<main>
+		<FullCrew />
+		<DelayExplainer />
+		<CommentaryShowcase />
+		<OpenSourceCTA />
+	</main>
+	<SiteFooter />
+</Layout>

@@ -1,0 +1,44 @@
+---
+const REPO_URL = 'https://github.com/green-plan/live-talker';
+---
+
+<section class="relative px-6 py-16 sm:px-8">
+	<div
+		class="pointer-events-none absolute left-1/2 top-1/2 h-64 w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-500/10 blur-[100px]"
+	>
+	</div>
+
+	<div class="relative mx-auto max-w-xl rounded-3xl border border-slate-800 bg-slate-900/60 p-10 text-center">
+		<span
+			class="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest text-amber-300"
+		>
+			⚠ proof of concept
+		</span>
+		<h2 class="mt-4 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+			Run it on your own matches.
+		</h2>
+		<p class="mt-4 text-slate-400">
+			Point live—talker at a CS2 match feed and it casts the game, a few seconds behind the
+			action. CS2 today; maybe more games later.
+		</p>
+		<p class="mt-2 text-sm text-slate-500">
+			This is an early, experimental proof of concept — expect rough edges and breaking changes.
+		</p>
+
+		<div class="mt-8 flex items-center justify-center">
+			<a
+				href={REPO_URL}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="inline-flex items-center gap-2 rounded-full bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_0_40px_rgba(0,196,224,0.35)] transition hover:bg-cyan-300"
+			>
+				<svg viewBox="0 0 16 16" fill="currentColor" class="h-4 w-4">
+					<path
+						d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.49c-2.22.48-2.69-1.07-2.69-1.07-.36-.93-.89-1.17-.89-1.17-.72-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.22 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"
+					/>
+				</svg>
+				View on GitHub
+			</a>
+		</div>
+	</div>
+</section>

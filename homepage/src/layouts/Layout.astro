@@ -1,0 +1,86 @@
+---
+import '../styles/global.css';
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const {
+	title = 'live—talker · a tiny AI broadcast crew',
+	description = 'An early, experimental proof of concept: live—talker watches your CS2 match and casts it live, like a tiny AI broadcast crew — entry frags, clutches, and economy reads, called the moment they happen.',
+} = Astro.props;
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
+		<link rel="alternate icon" href="/favicon.ico" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="generator" content={Astro.generator} />
+		<meta name="description" content={description} />
+		<title>{title}</title>
+	</head>
+	<body class="bg-slate-950 text-slate-100 antialiased">
+		<slot />
+	</body>
+</html>
+
+<style is:global>
+	html {
+		font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	}
+
+	/* Broadcast "heartbeat" — every animated accent on the page ticks to the
+	   same 135 BPM (60/135 ≈ 0.444s per beat), like a control-room graphics
+	   package rather than independent CSS effects. Shaped as a quick FLASH
+	   then a slower fade (not a smooth sine breathe) — a gentle in-and-out
+	   reads as a static glow at a glance; a sharp rise is what actually
+	   registers as "pulsing" when you're not staring straight at it. */
+	@keyframes beat-pulse-dot {
+		0% { opacity: 1; transform: scale(1); }
+		25% { opacity: 0.15; transform: scale(0.5); }
+		100% { opacity: 1; transform: scale(1); }
+	}
+	/* .beat-glow/.beat-ring are only used on the crew diagram now — kept
+	   noticeably calmer than .beat-dot/.beat-bar since they cover a whole
+	   row of nodes at once rather than one small accent. */
+	@keyframes beat-pulse-glow {
+		0% { opacity: 0.45; transform: scale(1); }
+		25% { opacity: 0.7; transform: scale(1.1); }
+		100% { opacity: 0.45; transform: scale(1); }
+	}
+	@keyframes beat-pulse-ring {
+		0% { box-shadow: 0 0 6px 0px rgba(0, 196, 224, 0.15); }
+		25% { box-shadow: 0 0 16px 2px rgba(0, 196, 224, 0.4); }
+		100% { box-shadow: 0 0 6px 0px rgba(0, 196, 224, 0.15); }
+	}
+	.beat-dot {
+		animation: beat-pulse-dot 0.889s ease-out infinite;
+	}
+	.beat-glow {
+		animation: beat-pulse-glow 0.889s ease-out infinite;
+		animation-fill-mode: backwards;
+	}
+	.beat-ring {
+		animation: beat-pulse-ring 0.889s ease-out infinite;
+		animation-fill-mode: backwards;
+	}
+	@keyframes beat-pulse-bar {
+		0% { transform: scaleY(1); }
+		25% { transform: scaleY(0.35); }
+		100% { transform: scaleY(1); }
+	}
+	.beat-bar {
+		transform-origin: bottom;
+		animation: beat-pulse-bar 0.889s ease-out infinite;
+		animation-fill-mode: backwards;
+	}
+	/* Deliberately NOT gated behind prefers-reduced-motion: this is the one
+	   thing this page is being asked to show off, and OS/browser "reduce
+	   motion" defaults are common enough that respecting them here made the
+	   effect invisible outright instead of just calmer. */
+</style>
