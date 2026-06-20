@@ -15,7 +15,7 @@ import { BeatDetector } from "../game/cs2/BeatDetector.js";
 import { AudioPlayer } from "../infra/AudioPlayer.js";
 import type { BroadcastRecorder } from "../audio/BroadcastRecorder.js";
 import type { BeatDebugRecorder } from "../audio/BeatDebugRecorder.js";
-import type { ICommentaryWriter, ISpeechSynthesizer } from "../synthesis/contracts.js";
+import type { ICommentaryWriter, ISpeechSynthesizer, Pace } from "../synthesis/contracts.js";
 import { Pool } from "../utils/pool.js";
 import { wavDurationMs } from "../utils/wav.js";
 import { logger } from "../utils/logger.js";
@@ -33,6 +33,74 @@ const hasSpeakableBeat = (beats: Beat[]): boolean => beats.some(b => b.intensity
 // Rendered slot: a finished clip, or FAILED (synthesis produced nothing) so the
 // conductor can skip the index instead of waiting on it forever.
 type RenderedSlot = RenderedClip | "FAILED";
+
+// --- Pace/density model ------------------------------------------------------
+// How urgent a batch's delivery should be is a scheduling decision, not
+// something the writer should infer from a raw number — it depends on timing
+// data (queue depth, how much real time the batch's own beats spanned) that
+// only the orchestrator has. Two independent signals feed it, but they are NOT
+// symmetric:
+//   1. queueDepth — backlog: how many OTHER batches are genuinely overdue,
+//      waiting behind this one (see backlogDepth). This is the ONLY signal
+//      allowed to reach "urgent" — the broadcast is provably behind schedule,
+//      so maximum-speed/telegraphic delivery is the correct, narrow response.
+//   2. density — how compressed THIS batch's own action was: an estimated
+//      clip length (more beats → longer) divided by the real-time span the
+//      beats themselves covered. This caps out at "busy" (moderately
+//      tightened) and can NEVER reach "urgent" on its own: the batcher's own
+//      grouping rules (beatGapMs/batchMaxMs) already bound a multi-beat
+//      batch's span tightly by construction, so almost every multi-beat batch
+//      reads as "dense" relative to a flat per-beat speaking-time estimate —
+//      letting that alone trigger maximum-speed delivery meant nearly every
+//      multi-kill got the most aggressive (and least intelligible) tier,
+//      independent of whether the broadcast was actually behind at all.
+// Either signal can push to "busy"; only queueDepth can push to "urgent".
+// Thresholds are tune-by-ear placeholders.
+
+// Estimated spoken length for a batch, before any TTS has actually run — used
+// only to gauge density, never as a real duration. 5s flat for one beat (a
+// full single-event call), +20% per additional beat.
+const BASE_CLIP_SEC = 5;
+const PER_EXTRA_BEAT_SEC = 0.2;
+
+// Floor on the span used to compute density. Two beats detected in the same
+// snapshot diff share an identical timestamp — most notably a kill and its
+// multiKill announcement, which BeatDetector always pushes at the same `now`
+// (see BeatDetector.ts processCombat) — so "real" span is routinely 0 for a
+// very common, not-actually-extreme case. Flooring it avoids treating every
+// multi-kill call-out as maximally dense just because it shares a timestamp.
+const MIN_DENSITY_SPAN_SEC = 3;
+
+// Calibrated against this orchestrator's own batching limits: beatGapMs/batchMaxMs
+// (config.ts) bound how spread out a batch's beats can ever be (5s by default), AND
+// the floor above means a 2-beat batch can never exceed density ~2.0 — so the
+// threshold must clear that or literally every multi-kill reads "busy" regardless
+// of real pace. Only 4+ beats clustered near the floor land "busy" on density alone.
+const DENSITY_BUSY = 2.5;
+const QUEUE_DEPTH_BUSY = 1;
+const QUEUE_DEPTH_URGENT = 3;
+
+function estimateClipSeconds(beatCount: number): number {
+  return BASE_CLIP_SEC * (1 + PER_EXTRA_BEAT_SEC * Math.max(0, beatCount - 1));
+}
+
+/**
+ * Density only means something for 2+ beats — a single beat has no span of
+ * its own to be "compressed" within, so a lone kill with no backlog stays
+ * "normal" rather than being forced urgent just because the estimate floor
+ * has nowhere to divide against. Multi-beat batches use the real gap between
+ * their first and last beat (floored — see MIN_DENSITY_SPAN_SEC), which is
+ * exactly the "how packed is this window" signal a raw beat count can't give
+ * (a 5-kill ACE in 3s vs. the same 5 kills spread over 20s should NOT get the
+ * same word budget).
+ */
+function densityFor(batch: SealedBatch): number {
+  const n = batch.beats.length;
+  if (n < 2) return 0;
+  const lastBeatTs = batch.beats[n - 1].timestamp;
+  const spanSec = Math.max(MIN_DENSITY_SPAN_SEC, (lastBeatTs - batch.anchorTs) / 1000);
+  return estimateClipSeconds(n) / spanSec;
+}
 
 // Keep a generous passage history so `passageHistoryCount` slices have headroom.
 const MAX_PASSAGE_HISTORY = 100;
@@ -73,6 +141,9 @@ export class ShoutCaster {
   private passageHistory: Passage[] = [];
   /** Rendered clips (or FAILED markers) filed by batch index for the conductor. */
   private readonly rendered = new Map<number, RenderedSlot>();
+  /** Batch index → wall-clock time it becomes eligible for text-stage pickup —
+   *  the pressure-settle wait (see computeSettleReadyAt). */
+  private readonly settleDeadlines = new Map<number, number>();
 
   // --- conductor state ---
   private nextIndexToAir = 1;
@@ -250,25 +321,57 @@ export class ShoutCaster {
       this.lastWatermark,
       (ts) => this.centralState.getSnapshotAt(ts)
     );
-    if (sealed.length > 0) this.sealedQueue.push(...sealed);
+    if (sealed.length > 0) {
+      this.sealedQueue.push(...sealed);
+      for (const b of sealed) this.settleDeadlines.set(b.index, this.computeSettleReadyAt(b, now));
+    }
 
     this.maybeStartText();
     this.driveConductor();
     this.maybeLogGauge(now);
   }
 
+  /**
+   * When a batch becomes eligible for text-stage pickup. Round/match-boundary
+   * seals and the synthetic dead-air filler are already a clean cut or already
+   * overdue — they skip the wait entirely. Everything else waits inside whatever
+   * slack remains before its hard air deadline (anchorTs + delayMs), reserving
+   * settleReserveMs for the LLM/TTS/conductor work still to come and capped at
+   * settleMaxMs, so queueDepth gets sampled later — once a fuller picture of
+   * incoming beats has had a chance to materialize — instead of the instant the
+   * batch happens to seal.
+   */
+  private computeSettleReadyAt(batch: SealedBatch, now: number): number {
+    const isFiller = batch.beats.some(b => b.type === "analysis");
+    if (batch.forceSealed || isFiller) return now;
+
+    const deadline = batch.anchorTs + this.cfg.delayMs - this.cfg.settleReserveMs;
+    return Math.max(now, Math.min(deadline, now + this.cfg.settleMaxMs));
+  }
+
   // --- Stage 1: Text (sequential, in game order) -----------------------------
 
   private maybeStartText(): void {
     if (this.textBusy || this.sealedQueue.length === 0) return;
-    const batch = this.sealedQueue.shift()!;
+    const head = this.sealedQueue[0];
 
     // Skip batches that carry only low-intensity ambient noise (gunfire, stray
     // deaths, economy reads during live play). A batch with no medium/high beat
     // is not worth an LLM + TTS call — it produces filler that pads the queue
-    // and pushes real commentary further behind.
-    const isFiller = batch.beats.some(b => b.type === "analysis");
-    if (!isFiller && !hasSpeakableBeat(batch.beats)) {
+    // and pushes real commentary further behind. Checked on the head before the
+    // settle gate below: a doomed batch never needs to wait on anything.
+    const isFiller = head.beats.some(b => b.type === "analysis");
+    const isAllLow = !isFiller && !hasSpeakableBeat(head.beats);
+
+    if (!isAllLow) {
+      const readyAt = this.settleDeadlines.get(head.index) ?? 0;
+      if (Date.now() < readyAt) return; // still settling — let pressure reveal itself, recheck next tick
+    }
+
+    const batch = this.sealedQueue.shift()!;
+    this.settleDeadlines.delete(batch.index);
+
+    if (isAllLow) {
       const id = batchTrace(batch.index);
       log.debug({ batch: id, beats: batch.beats.length }, `${id} all-low batch — skipped`);
       for (const b of batch.beats) this.beatDebugRecorder?.recordBeat(b, "SKIPPED-all-low");
@@ -284,18 +387,73 @@ export class ShoutCaster {
     void this.processText(batch);
   }
 
+  /**
+   * How many OTHER sealed batches are genuinely backed up — i.e. their own
+   * settle wait has already elapsed, so they're sitting idle only because the
+   * text stage is busy with something else, not because they haven't matured
+   * yet. Deliberately NOT `sealedQueue.length` (every batch behind the head):
+   * the settle wait itself takes several seconds, and in any normal match
+   * something else seals during that window just because the game kept going
+   * — that batch isn't "backlog," it just hasn't reached its own readyAt yet
+   * and will get its turn well within its own deadline. Counting it anyway
+   * made `queueDepth` (and therefore pace) read "busy" almost permanently,
+   * independent of whether the broadcast was actually behind schedule.
+   * `batcher.pendingCount()` (still-accumulating, not-yet-sealed beats) is
+   * excluded entirely for the same reason — "the game is still going" isn't
+   * backlog either.
+   */
+  private backlogDepth(): number {
+    const now = Date.now();
+    return this.sealedQueue.filter(b => (this.settleDeadlines.get(b.index) ?? 0) <= now).length;
+  }
+
+  /**
+   * Decide how this batch should be delivered — the writer only renders the
+   * result, it doesn't choose it (see contracts.ts). "urgent" (maximum-speed,
+   * telegraphic — see CommentaryWriter's paceLine/buildPerformanceBlock) is
+   * reserved for genuine backlog (queueDepth) alone; this batch's own action
+   * density can only nudge things up to "busy" (see the Pace/density model
+   * comment for why density must not reach "urgent" on its own). Word budget
+   * follows the same beat-count shape as before, just capped by the pace
+   * decided here instead of one the writer derived itself. A pure analysis
+   * filler bypasses both — it only ever fires when the pipeline is already
+   * idle, so it's always "normal" with a fuller budget to actually deliver
+   * downtime analysis instead of a clipped half-sentence.
+   */
+  private planDelivery(batch: SealedBatch, queueDepth: number): { pace: Pace; targetWords: number } {
+    const isAnalysis = batch.beats.length === 1 && batch.beats[0].type === "analysis";
+    if (isAnalysis) return { pace: "normal", targetWords: 30 };
+
+    const density = densityFor(batch);
+    const pace: Pace =
+      queueDepth >= QUEUE_DEPTH_URGENT ? "urgent"
+      : density >= DENSITY_BUSY || queueDepth >= QUEUE_DEPTH_BUSY ? "busy"
+      : "normal";
+
+    // Floor 14 (a full single-event call), +2/beat, capped by pace (20 normal,
+    // 14 busy, 10 urgent — ~9s/~6s/~5s of audio, safe back-to-back under the
+    // conductor's elastic delay).
+    const wordCap = pace === "urgent" ? 10 : pace === "busy" ? 14 : 20;
+    const targetWords = Math.min(wordCap, 14 + Math.max(0, batch.beats.length - 1) * 2);
+    return { pace, targetWords };
+  }
+
   private async processText(batch: SealedBatch): Promise<void> {
     const id = batchTrace(batch.index);
     const t0 = Date.now();
     for (const b of batch.beats) this.beatDebugRecorder?.recordBeat(b, "SENT");
     try {
+      const queueDepth = this.backlogDepth();
+      const { pace, targetWords } = this.planDelivery(batch, queueDepth);
       const result = await this.commentaryWriter.write({
         batchIndex: batch.index,
         beats: batch.beats,
         snapshot: batch.snapshot,
         passageHistory: this.passageHistory.slice(-this.cfg.passageHistoryCount),
         tacticalContext: this.interpreter.describeSituation(batch.snapshot),
-        queueDepth: this.sealedQueue.length + this.batcher.pendingCount(),
+        queueDepth,
+        pace,
+        targetWords,
       });
       if (!result) {
         log.warn({ batch: id }, `${id} produced no passage — skipping`);

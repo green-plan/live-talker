@@ -139,6 +139,18 @@ already passed by the time the earlier one finishes.
 This is the core product decision: a deliberate delay buys complete, ordered, accurate
 commentary. It is not a latency bug to be optimized away.
 
+### Pickup is deliberately deferred within the floor
+
+A sealed batch isn't necessarily handed to the writing stage the instant it seals. How
+backed up the broadcast is shapes word count and delivery pace, and that read is only
+trustworthy once enough real time has passed for a true picture of incoming action to
+form — sampled immediately at seal time, it can't yet see a burst that's only just
+starting. So pickup borrows from whatever slack still exists before the batch's own air
+deadline, waiting long enough for that picture to settle before committing the batch to
+the writer — never so long that the deadline itself is put at risk. A clean narrative cut
+(a round or match boundary) or the synthetic dead-air filler skips this entirely: there's
+nothing further to wait for.
+
 ---
 
 ## 7. Configuration & timing

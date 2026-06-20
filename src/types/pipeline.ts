@@ -66,6 +66,11 @@ export interface SealedBatch {
   beats: Beat[];
   anchorTs: number;
   snapshot: GameSnapshot;
+  /** True when this batch was sealed early by a round/match-boundary beat rather
+   *  than an idle gap or the span cap — already a clean narrative cut, so the
+   *  orchestrator's pressure-settle wait (see OrchestratorConfig.settleMaxMs)
+   *  skips it and picks it up immediately. */
+  forceSealed: boolean;
 }
 
 /**
@@ -158,6 +163,22 @@ export interface OrchestratorConfig {
    *  if generation falls behind, the clip airs late and a warning is logged, but
    *  the delay itself never adjusts — match the OBS feed delay to this value. (ms) */
   delayMs: number;
+  /**
+   * Time reserved for the LLM + TTS + conductor handoff that still has to happen
+   * after a batch's pressure-settle wait ends (see settleMaxMs). Subtracted from
+   * the batch's hard air deadline (anchorTs + delayMs) when computing how much
+   * slack is available to wait in — so the wait never eats into time the
+   * downstream stages actually need to land the clip on time. (ms)
+   */
+  settleReserveMs: number;
+  /**
+   * Hard cap on how long the text stage will defer picking up a freshly sealed
+   * batch in order to get a fuller read on incoming pressure (queueDepth sampled
+   * later, once more beats have had a chance to seal behind it) before sizing the
+   * clip. Bounded by the deadline's actual slack regardless — this just stops a
+   * genuine lull with abundant slack from stalling pickup pointlessly. (ms)
+   */
+  settleMaxMs: number;
   /** LLM stage parallelism. Retained for symmetry, but the story dependency
    *  (each call needs the previous passage) makes it effectively 1. */
   textConcurrency: number;

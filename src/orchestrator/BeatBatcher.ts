@@ -135,6 +135,7 @@ export class BeatBatcher {
         beats: b.beats,
         anchorTs: b.windowStart,
         snapshot: resolveSnapshot(lastTs),
+        forceSealed: b.forceSeal,
       };
       out.push(sealed);
 

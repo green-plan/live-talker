@@ -17,14 +17,28 @@ function beat(id: number): Beat {
   return { id, type: "kill", summary: `kill ${id}`, intensity: "medium", timestamp: Date.now() };
 }
 
-function sealedBatch(index: number, anchorTs: number): SealedBatch {
-  return { index, beats: [beat(index)], anchorTs, snapshot: snap };
+function sealedBatch(index: number, anchorTs: number, forceSealed = false): SealedBatch {
+  return { index, beats: [beat(index)], anchorTs, snapshot: snap, forceSealed };
 }
 
 /** A sealed batch carrying only low-intensity ambient noise — dropped before the text stage. */
 function lowOnlyBatch(index: number, anchorTs: number): SealedBatch {
   const b: Beat = { id: index, type: "gunfire", summary: "ambient", intensity: "low", timestamp: anchorTs };
-  return { index, beats: [b], anchorTs, snapshot: snap };
+  return { index, beats: [b], anchorTs, snapshot: snap, forceSealed: false };
+}
+
+/** A sealed batch carrying only the synthetic dead-air filler beat. */
+function fillerBatch(index: number, anchorTs: number): SealedBatch {
+  const b: Beat = { id: index, type: "analysis", summary: "filler", intensity: "low", timestamp: anchorTs };
+  return { index, beats: [b], anchorTs, snapshot: snap, forceSealed: false };
+}
+
+/** A sealed batch with beats at explicit timestamps, for density tests. */
+function multiBeatBatch(index: number, timestamps: number[]): SealedBatch {
+  const beats: Beat[] = timestamps.map((ts, i) => ({
+    id: index * 100 + i, type: "kill", summary: `kill ${i}`, intensity: "medium", timestamp: ts,
+  }));
+  return { index, beats, anchorTs: timestamps[0], snapshot: snap, forceSealed: false };
 }
 
 /** Fake player that records when each clip started and blocks for a set duration. */
@@ -174,5 +188,144 @@ describe("TextStage (sequential storyteller)", () => {
       expect.stringContaining("[MOCK#2]"),
     ]);
     expect(sc.passageHistory.map((p: any) => p.index)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("Settle wait (pressure-aware pickup)", () => {
+  it("defers a batch with ample slack, capped at settleMaxMs", () => {
+    const sc: any = makeCaster({ delayMs: 10000, settleReserveMs: 4000, settleMaxMs: 4000 }, new FakePlayer(), new MockCommentaryWriter(0));
+    const now = Date.now();
+    // deadline = anchorTs(now) + delay(10000) - reserve(4000) = now+6000, capped at now+settleMaxMs(4000).
+    const readyAt = sc.computeSettleReadyAt(sealedBatch(1, now), now);
+    expect(readyAt).toBe(now + 4000);
+  });
+
+  it("skips the wait entirely for a force-sealed (round/match boundary) batch", () => {
+    const sc: any = makeCaster({ delayMs: 10000, settleReserveMs: 4000, settleMaxMs: 4000 }, new FakePlayer(), new MockCommentaryWriter(0));
+    const now = Date.now();
+    expect(sc.computeSettleReadyAt(sealedBatch(1, now, true), now)).toBe(now);
+  });
+
+  it("skips the wait entirely for the synthetic dead-air filler", () => {
+    const sc: any = makeCaster({ delayMs: 10000, settleReserveMs: 4000, settleMaxMs: 4000 }, new FakePlayer(), new MockCommentaryWriter(0));
+    const now = Date.now();
+    expect(sc.computeSettleReadyAt(fillerBatch(1, now), now)).toBe(now);
+  });
+
+  it("does not wait when slack is already gone (deadline at or before now)", () => {
+    const sc: any = makeCaster({ delayMs: 1000, settleReserveMs: 4000, settleMaxMs: 4000 }, new FakePlayer(), new MockCommentaryWriter(0));
+    const now = Date.now();
+    // deadline = anchorTs(now) + delay(1000) - reserve(4000) = now-3000, already past.
+    expect(sc.computeSettleReadyAt(sealedBatch(1, now), now)).toBe(now);
+  });
+
+  it("holds a settling batch's text-stage pickup until its readyAt passes", async () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const batch = sealedBatch(1, T0);
+    sc.sealedQueue = [batch];
+    sc.settleDeadlines.set(1, T0 + 200); // still settling
+
+    sc.maybeStartText();
+    await sleep(20);
+    expect(sc.passageHistory).toHaveLength(0); // gated — not picked up yet
+
+    sc.settleDeadlines.set(1, T0); // settle window over
+    sc.maybeStartText();
+    await sleep(50);
+    expect(sc.passageHistory).toHaveLength(1); // now processed
+  });
+
+  it("never gates an all-low batch on the settle wait", async () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    sc.sealedQueue = [lowOnlyBatch(1, T0)];
+    sc.settleDeadlines.set(1, T0 + 60000); // would never become ready in this test's lifetime
+
+    sc.maybeStartText();
+    // Skipped immediately despite the far-future settle deadline: shifted off the
+    // queue and consumed by the conductor's FAILED-skip in the same synchronous call.
+    expect(sc.sealedQueue).toHaveLength(0);
+    expect(sc.nextIndexToAir).toBe(2);
+  });
+});
+
+describe("Backlog depth (does NOT count batches still settling)", () => {
+  it("does not count a batch that merely sealed during another batch's settle wait", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    sc.sealedQueue = [sealedBatch(2, T0)];
+    sc.settleDeadlines.set(2, T0 + 60000); // still settling — not actual backlog
+    expect(sc.backlogDepth()).toBe(0);
+  });
+
+  it("counts a batch whose own settle wait has already elapsed", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    sc.sealedQueue = [sealedBatch(2, T0)];
+    sc.settleDeadlines.set(2, T0 - 1); // already past its own readyAt — genuinely waiting
+    expect(sc.backlogDepth()).toBe(1);
+  });
+});
+
+describe("Delivery planning (pace/density)", () => {
+  it("calls the same beat count denser when packed into a smaller real-time span (4+ beats — 2-beat batches never reach 'busy' on density alone)", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const tight = sc.planDelivery(multiBeatBatch(1, [T0, T0 + 1000, T0 + 2000, T0 + 3000]), 0);   // 4 beats / 3s
+    const loose = sc.planDelivery(multiBeatBatch(2, [T0, T0 + 4000, T0 + 8000, T0 + 12000]), 0);  // 4 beats / 12s
+    expect(tight.targetWords).toBeLessThanOrEqual(loose.targetWords);
+    expect(tight.pace).toBe("busy"); // density alone never reaches "urgent" — see Pace/density model comment
+    expect(loose.pace).toBe("normal");
+  });
+
+  it("never reaches 'busy' or 'urgent' from density alone for a routine 2-beat batch (e.g. a double-kill call-out), no matter how tight", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace } = sc.planDelivery(multiBeatBatch(1, [T0, T0 + 500]), 0); // 2 beats, very tight, no backlog
+    expect(pace).toBe("normal");
+  });
+
+  it("does not force urgency on a lone beat just because it has no span of its own", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace } = sc.planDelivery(sealedBatch(1, T0), 0); // 1 beat, queueDepth 0
+    expect(pace).toBe("normal");
+  });
+
+  it("escalates pace from backlog (queueDepth) even with zero density", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace } = sc.planDelivery(sealedBatch(1, T0), 5); // 1 beat, heavy backlog
+    expect(pace).toBe("urgent");
+  });
+
+  it("never reaches 'urgent' from density alone, even for a tightly-clustered 5-beat batch with no backlog", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace } = sc.planDelivery(multiBeatBatch(1, [T0, T0, T0, T0, T0]), 0); // 5 simultaneous beats, no backlog
+    expect(pace).toBe("busy"); // dense, but "urgent" requires real backlog
+  });
+
+  it("always plans a calm, fuller-budget read for the dead-air filler", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace, targetWords } = sc.planDelivery(fillerBatch(1, T0), 10); // heavy backlog, irrelevant
+    expect(pace).toBe("normal");
+    expect(targetWords).toBe(30);
+  });
+
+  it("does not max out density just because two beats share a timestamp (e.g. a kill + its multiKill call-out)", () => {
+    const sc: any = makeCaster({}, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace } = sc.planDelivery(multiBeatBatch(1, [T0, T0]), 0); // zero span, no backlog
+    expect(pace).not.toBe("urgent"); // floored span, not infinite density
+  });
+
+  it("stays normal for a 2-beat batch spread across the full batchMaxMs window", () => {
+    const sc: any = makeCaster({ batchMaxMs: 5000 }, new FakePlayer(), new MockCommentaryWriter(0));
+    const T0 = Date.now();
+    const { pace } = sc.planDelivery(multiBeatBatch(1, [T0, T0 + 5000]), 0); // loosest possible 2-beat span
+    expect(pace).toBe("normal");
   });
 });

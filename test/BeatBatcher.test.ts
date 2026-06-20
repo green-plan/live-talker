@@ -28,6 +28,7 @@ describe("BeatBatcher", () => {
     expect(first[0].index).toBe(1);
     expect(first[0].anchorTs).toBe(0);
     expect(first[0].beats.map(e => e.id)).toEqual([1, 2]);
+    expect(first[0].forceSealed).toBe(false);
 
     // Island 2 seals once the watermark passes its last beat (2000) by the gap → 3000.
     expect(b.collectSealed(2999, resolve)).toHaveLength(0);
@@ -44,6 +45,7 @@ describe("BeatBatcher", () => {
     const sealed = b.collectSealed(100, resolve);
     expect(sealed).toHaveLength(1);
     expect(sealed[0].beats.map(e => e.type)).toEqual(["kill", "roundEnd"]);
+    expect(sealed[0].forceSealed).toBe(true);
   });
 
   it("assembles an island that straddles multiple collect cycles into one batch", () => {

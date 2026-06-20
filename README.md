@@ -1,6 +1,8 @@
-# live-talker
+<p align="center">
+  <img src="docs/images/livetalker.png" alt="live—talker: a tiny AI broadcast crew" width="600">
+</p>
 
-Real-time AI esports shoutcaster for Counter-Strike 2. Taps into live match telemetry via Game State Integration, interprets events into narrative beats, batches them into story segments, generates commentary with an LLM, renders it to speech, and plays it back with a deliberate **22-second broadcast delay** — so the system always has complete context before it speaks.
+Real-time AI esports shoutcaster for Counter-Strike 2. Taps into live match telemetry via Game State Integration, interprets events into narrative beats, batches them into story segments, generates commentary with an LLM, renders it to speech, and plays it back on a deliberate, configurable **broadcast delay** — so the system always has complete context before it speaks.
 
 ---
 
@@ -10,6 +12,10 @@ A one-way pipeline that turns live game telemetry into spoken commentary, runnin
 
 **Ingest → Interpret → Batch → Narrate → Voice → Air**
 
+<p align="center">
+  <img src="docs/images/full_crew.png" alt="The full crew: Listener, Memory, Map Reader, Analyst, Storyteller, Voice, Archivist, Conductor" width="700">
+</p>
+
 1. **Ingest** — a local HTTP listener receives the game's state-integration feed and normalizes each packet into a rolling match snapshot plus a log of discrete events.
 2. **Interpret** — a game-specific analyst diffs consecutive snapshots and reads the event log to emit *beats*: meaningful moments (kills, trades, clutches, bomb plays, economy reads) tagged with an intensity. Deduplication and cooldowns keep the noise out.
 3. **Batch** — beats are grouped into short, time-windowed segments. Empty windows produce nothing; silence is preserved as real dead air.
@@ -18,6 +24,10 @@ A one-way pipeline that turns live game telemetry into spoken commentary, runnin
 6. **Air** — a play head ("the conductor") airs each clip at its scheduled time, a fixed delay behind the live game, strictly in order — stretching the delay elastically if a render runs late rather than ever playing out of sequence.
 
 The deliberate broadcast delay is the central idea: by the time the caster speaks, the segment has fully resolved, so commentary is accurate and complete instead of racing incomplete data.
+
+<p align="center">
+  <img src="docs/images/lag.png" alt="Commentary runs a few seconds behind the live match" width="600">
+</p>
 
 The code is layered so the pipeline stays game-agnostic and the game knowledge is isolated:
 
@@ -87,6 +97,18 @@ Move the generated `.cfg` file to your CS2 `cfg/` directory and restart CS2.
 
 ---
 
+## OBS Setup — aligning audio to the delay
+
+The caster's commentary lags the live action on purpose (see [Architecture](#architecture)). For
+it to sound in sync on stream, OBS needs to hold back the *game* feed by the same amount, so the
+video your viewers see and the line being spoken about it land together.
+
+In OBS: **Settings → Advanced → Stream Delay**, or add a **Render Delay** filter to the game
+capture source, set to match the broadcast delay (`delayMs` in `src/config.ts`). Route the
+caster's audio (and your mic, if you want to talk over it) on its own track with no added delay.
+
+---
+
 ## WSL Note
 
 Audio playback on WSL2 routes through the Windows audio stack via `powershell.exe`. Audio files are written to the Windows `%TEMP%` directory so PowerShell can open them with a normal `C:\` path. No extra setup needed — this is handled automatically when `WSL_DISTRO_NAME` is set in the environment.
@@ -94,6 +116,10 @@ Audio playback on WSL2 routes through the Windows audio stack via `powershell.ex
 ---
 
 ## Environment Variables
+
+<p align="center">
+  <img src="docs/images/commentary_track.png" alt="A full commentary track, saved and ready to relive" width="500">
+</p>
 
 | Variable | Default | Description |
 |---|---|---|
