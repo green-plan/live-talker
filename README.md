@@ -6,6 +6,18 @@ Real-time AI esports shoutcaster for Counter-Strike 2. Taps into live match tele
 
 ---
 
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Mock / Debug Mode](#mock--debug-mode)
+- [CS2 Setup](#cs2-setup)
+- [OBS Setup — aligning audio to the delay](#obs-setup--aligning-audio-to-the-delay)
+- [WSL Note](#wsl-note)
+- [Environment Variables](#environment-variables)
+
+---
+
 ## Architecture
 
 A one-way pipeline that turns live game telemetry into spoken commentary, running a fixed delay behind real time:
