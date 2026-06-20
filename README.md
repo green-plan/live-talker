@@ -221,6 +221,8 @@ open them with a normal `C:\` path. No extra setup needed — this is handled au
 ## Acknowledgments
 
 Map callout/navigation data (`etc/nav-info/`) comes from [awpy](https://github.com/pnxenopoulos/awpy)
-(MIT) — see [`etc/nav-info/THIRD_PARTY_LICENSE.txt`](etc/nav-info/THIRD_PARTY_LICENSE.txt). The
+(MIT) — see [`etc/nav-info/THIRD_PARTY_LICENSE.txt`](etc/nav-info/THIRD_PARTY_LICENSE.txt). GSI event
+structures are documented from [csgogsi](https://github.com/osztenkurden/csgogsi) (MIT) — see
+[`docs/README-CS2-EVENTS.md`](docs/README-CS2-EVENTS.md) for its embedded README and license. The
 homepage's full third-party dependency list is generated at build time into
 `third-party-licenses.txt`, linked from its footer.
