@@ -1,6 +1,6 @@
 # Disclaimer
 
-This project is distributed under the MIT license — see [`LICENSE.txt`](LICENSE.txt),
+The main source code is under MIT License — see [`LICENSE.txt`](LICENSE.txt),
 
 ## Scope
 
