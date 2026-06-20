@@ -10,5 +10,8 @@ gsi-dump.jsonl
 .idea/
 temp/
 
+# Fetched by scripts/fetch-nav-info.ts (postinstall) — see etc/nav-info/README.md.
+etc/nav-info/nav-info.csv
+
 # Local Claude Code config (machine-specific; a shared .claude/settings.json may be committed)
 .claude/settings.local.json

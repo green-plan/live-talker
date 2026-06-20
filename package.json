@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "tsx scripts/fetch-nav-info.ts",
+    "fetch:nav-info": "tsx scripts/fetch-nav-info.ts",
     "dev": "tsx --watch src/index.ts",
     "build:overlay": "npm run build --prefix overlay",
     "dev:overlay": "npm run build:overlay && OVERLAY=true tsx --watch src/index.ts",

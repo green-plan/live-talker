@@ -6,6 +6,9 @@
   <a href="https://green-plan.github.io/live-talker/">🔗 Homepage</a>
 </p>
 
+> ⚠️ **Early, experimental proof of concept.** Not a polished product — expect rough edges,
+> breaking changes, and gaps in support.
+
 Real-time AI esports shoutcaster for Counter-Strike 2. Taps into live match telemetry via Game State Integration, interprets events into narrative beats, batches them into story segments, generates commentary with an LLM, renders it to speech, and plays it back on a deliberate, configurable **broadcast delay** — so the system always has complete context before it speaks.
 
 ---
@@ -196,10 +199,6 @@ open them with a normal `C:\` path. No extra setup needed — this is handled au
 ---
 
 ## Environment Variables
-
-<p align="center">
-  <img src="docs/images/commentary_track.png" alt="A full commentary track, saved and ready to relive" width="500">
-</p>
 
 | Variable | Default | Description |
 |---|---|---|
