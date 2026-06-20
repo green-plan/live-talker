@@ -9,10 +9,14 @@ import { logger } from "../utils/logger.js";
 
 const log = logger.child({ service: "[SpeechSynthesizer]" });
 
-const MODEL = "google/gemini-3.1-flash-tts-preview";
+// Default OpenRouter TTS model slug — overridable via OPENROUTER_TTS_MODEL (see index.ts).
+const DEFAULT_MODEL = "google/gemini-3.1-flash-tts-preview";
 
 export class SpeechSynthesizer implements ISpeechSynthesizer {
-  constructor(private readonly client?: OpenRouterClient) {}
+  constructor(
+    private readonly client?: OpenRouterClient,
+    private readonly model: string = DEFAULT_MODEL,
+  ) {}
 
   async synthesizeToFile(text: string): Promise<string | null> {
     if (!this.client) return null;
@@ -29,7 +33,7 @@ export class SpeechSynthesizer implements ISpeechSynthesizer {
 
     try {
       const pcm = await this.client.postBinary("/audio/speech", {
-        model: MODEL,
+        model: this.model,
         input: text,
         voice: "Fenrir",
         response_format: "pcm",

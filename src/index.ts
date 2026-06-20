@@ -33,6 +33,10 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const MOCK_TEXT = process.env.MOCK_TEXT === "true" || process.env.MOCK === "true";
 const MOCK_SPEECH = process.env.MOCK_SPEECH === "true" || process.env.MOCK === "true";
 const TTS_MODE = (process.env.TTS_MODE === "gemini" ? "gemini" : "plain") as TtsMode;
+// Optional overrides — defaults live with each synthesizer. Pricing varies by model and
+// provider; check OpenRouter's current pricing for whichever model you set here.
+const OPENROUTER_LLM_MODEL = process.env.OPENROUTER_LLM_MODEL;
+const OPENROUTER_TTS_MODEL = process.env.OPENROUTER_TTS_MODEL;
 const MOCK_TEXT_DELAY = Number(process.env.MOCK_TEXT_DELAY_MS ?? 900);
 const MOCK_SPEECH_DELAY = Number(process.env.MOCK_SPEECH_DELAY_MS ?? 900);
 // RECORD_BROADCAST=true → save the whole session as one WAV with real timing;
@@ -48,6 +52,10 @@ const OVERLAY_PORT = Number(process.env.OVERLAY_PORT ?? PORT + 2);
 // serialize the concurrent speech pool — see OpenRouterClient.
 const OPENROUTER_MAX_CALLS_PER_SESSION = Number(process.env.OPENROUTER_MAX_CALLS_PER_SESSION ?? 2000);
 const OPENROUTER_RATE_LIMIT_PER_MINUTE = Number(process.env.OPENROUTER_RATE_LIMIT_PER_MINUTE ?? 60);
+// Reject a runaway prompt before it becomes a huge token bill. A legit shoutcast call is the
+// system prompt + ~15 short history turns + the current segment (~25-30k chars worst case);
+// this sits ~2x above that, so it only trips on a genuine runaway (e.g. an unbounded transcript).
+const OPENROUTER_MAX_REQUEST_CHARS = Number(process.env.OPENROUTER_MAX_REQUEST_CHARS ?? 64_000);
 
 if (MOCK_TEXT) log.info("MOCK_TEXT — using mock LLM, no API key required for text synthesis");
 if (MOCK_SPEECH) log.info("MOCK_SPEECH — using mock TTS (Windows SAPI), no API key required for speech");
@@ -62,6 +70,7 @@ const orClient = OPENROUTER_API_KEY
   ? new OpenRouterClient(OPENROUTER_API_KEY, {
       maxCallsPerSession: OPENROUTER_MAX_CALLS_PER_SESSION,
       ratePerMinute: OPENROUTER_RATE_LIMIT_PER_MINUTE,
+      maxRequestChars: OPENROUTER_MAX_REQUEST_CHARS,
     })
   : undefined;
 
@@ -75,11 +84,11 @@ const audioSink: IAudioSink = overlay ? overlay.sink : new WslAudioPlayer();
 
 const textSynth = MOCK_TEXT
   ? new MockCommentaryWriter(MOCK_TEXT_DELAY)
-  : new CommentaryWriter(orClient, TTS_MODE);
+  : new CommentaryWriter(orClient, TTS_MODE, OPENROUTER_LLM_MODEL);
 
 const speechSynth = MOCK_SPEECH
   ? new MockSpeechSynthesizer(MOCK_SPEECH_DELAY)
-  : new SpeechSynthesizer(orClient);
+  : new SpeechSynthesizer(orClient, OPENROUTER_TTS_MODEL);
 
 // Filesystem-safe, human-readable local timestamp, e.g. "2026-06-18_13-52-00".
 const sessionStamp = new Date().toLocaleString("sv-SE").replace(/[: ]/g, (m) => (m === " " ? "_" : "-"));

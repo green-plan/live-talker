@@ -15,3 +15,7 @@ This project is an experimental, unaudited hobby project, not a supported produc
   monitoring the running process.
 - This codebase has not been audited or certified against bugs that could cause unintended,
   excessive, or looping API calls. Use of a real API key is at your own risk.
+- The LLM and TTS models are configurable (`OPENROUTER_LLM_MODEL`, `OPENROUTER_TTS_MODEL`)
+  and have independently varying prices that can change over time. Check OpenRouter's
+  current pricing for whichever model you use — including the defaults — before running
+  this against a real API key.

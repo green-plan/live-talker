@@ -88,7 +88,9 @@ See [`AGENTS.md`](AGENTS.md) for the layering rules and [`docs/`](docs/) for the
 
    Use a key with a hard spend limit you've set yourself — this project has not been audited
    for bugs that could trigger unintended or runaway API calls (e.g. a stuck loop), and you
-   are solely responsible for any resulting cost.
+   are solely responsible for any resulting cost. The LLM (`OPENROUTER_LLM_MODEL`) and TTS
+   (`OPENROUTER_TTS_MODEL`) models are independently configurable and priced separately by
+   the provider — check current pricing for whichever model you use, including the defaults.
 
 2. **Install.** The [browser overlay](#isolated-audio-via-the-browser-overlay) is on by
    default, so its dependencies install alongside the backend's:
@@ -245,22 +247,24 @@ open them with a normal `C:\` path. No extra setup needed — this is handled au
 
 ## Environment Variables
 
-| Variable | Default  | Description |
-|---|----------|---|
-| `PORT` | `3000`   | GSI listener port; health runs on `PORT+1` |
-| `OPENROUTER_API_KEY` | —        | Optional; needed only for real LLM + TTS (omit and use `MOCK` below for no API key/cost) |
-| `MOCK` | `false`  | Enable both mock synthesizers (no API key needed) |
-| `MOCK_TEXT` | `false`  | Mock LLM only |
-| `MOCK_SPEECH` | `false`  | Mock TTS only (uses Windows SAPI) |
-| `MOCK_TEXT_DELAY_MS` | `900`    | Simulated LLM latency in mock mode |
-| `MOCK_SPEECH_DELAY_MS` | `900`    | Simulated TTS latency in mock mode |
-| `TTS_MODE` | `plain`  | `plain` or `gemini` (expressive inline tags) |
-| `LOG_LEVEL` | `info`   | `trace` / `debug` / `info` / `warn` / `error` |
+| Variable | Default  | Description                                                                                                                                                                |
+|---|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `PORT` | `3000`   | GSI listener port; health runs on `PORT+1`                                                                                                                                 |
+| `OPENROUTER_API_KEY` | —        | Optional; needed only for real LLM + TTS (Costs and key limits are your responsibility. Omit and use `MOCK` below for no API key/cost)                                     |
+| `MOCK` | `false`  | Enable both mock synthesizers (no API key needed)                                                                                                                          |
+| `MOCK_TEXT` | `false`  | Mock LLM only                                                                                                                                                              |
+| `MOCK_SPEECH` | `false`  | Mock TTS only (uses Windows SAPI)                                                                                                                                          |
+| `MOCK_TEXT_DELAY_MS` | `900`    | Simulated LLM latency in mock mode                                                                                                                                         |
+| `MOCK_SPEECH_DELAY_MS` | `900`    | Simulated TTS latency in mock mode                                                                                                                                         |
+| `TTS_MODE` | `plain`  | `plain` or `gemini` (expressive inline tags)                                                                                                                               |
+| `LOG_LEVEL` | `info`   | `trace` / `debug` / `info` / `warn` / `error`                                                                                                                              |
 | `RECORD_BROADCAST` | `false`  | `true` to record the full session to `temp/broadcast-<timestamp>.wav` (with a matching `.srt` subtitle track alongside it), or a file path to choose the location yourself |
-| `OVERLAY` | `true`   | Air audio through the [browser overlay](#isolated-audio-via-the-browser-overlay) (for OBS) instead of desktop playback; set to `false` for desktop-only playback |
-| `OVERLAY_PORT` | `PORT+2` | Port for the overlay's HTTP + WebSocket server |
-| `OPENROUTER_MAX_CALLS_PER_SESSION` | `2000`   | Hard ceiling on total OpenRouter calls per process lifetime — a backstop against a bug causing unbounded calls, not a cost budget |
-| `OPENROUTER_RATE_LIMIT_PER_MINUTE` | `60`     | Max OpenRouter calls allowed in any trailing 60s window (doesn't block concurrent text+speech calls under the limit) |
+| `OVERLAY` | `true`   | Air audio through the [browser overlay](#isolated-audio-via-the-browser-overlay) (for OBS) instead of desktop playback; set to `false` for desktop-only playback           |
+| `OVERLAY_PORT` | `PORT+2` | Port for the overlay's HTTP + WebSocket server                                                                                                                             |
+| `OPENROUTER_MAX_CALLS_PER_SESSION` | `2000`   | Hard ceiling on total OpenRouter calls per process lifetime — a backstop attempt against a bug causing unbounded calls, not a cost budget                                  |
+| `OPENROUTER_RATE_LIMIT_PER_MINUTE` | `60`     | Max OpenRouter calls allowed in any trailing 60s window (doesn't block concurrent text+speech calls under the limit)                                                       |
+| `OPENROUTER_LLM_MODEL` | `google/gemini-3.5-flash` | OpenRouter model slug for commentary text. Pricing varies by model — check OpenRouter's current pricing before overriding |
+| `OPENROUTER_TTS_MODEL` | `google/gemini-3.1-flash-tts-preview` | OpenRouter model slug for speech synthesis. Pricing varies by model — check OpenRouter's current pricing before overriding |
 
 ---
 

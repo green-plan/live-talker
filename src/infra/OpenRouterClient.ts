@@ -8,6 +8,7 @@ const RATE_WINDOW_MS = 60_000;
 export interface OpenRouterClientLimits {
   maxCallsPerSession?: number; // hard ceiling on total calls for this process; undefined = no cap
   ratePerMinute?: number;      // max calls in any trailing 60s window; undefined = unlimited
+  maxRequestChars?: number;    // reject any request whose serialized body exceeds this many chars; undefined = no cap
 }
 
 export class OpenRouterClient {
@@ -49,7 +50,7 @@ export class OpenRouterClient {
   }
 
   private async request(path: string, body: unknown): Promise<Response> {
-    const { maxCallsPerSession } = this.limits;
+    const { maxCallsPerSession, maxRequestChars } = this.limits;
 
     // Hard backstop against a bug (e.g. a runaway loop) generating unbounded billed calls.
     if (maxCallsPerSession !== undefined && this.callCount >= maxCallsPerSession) {
@@ -58,6 +59,14 @@ export class OpenRouterClient {
         this.capLogged = true;
       }
       throw new Error(`OpenRouter session call cap reached (${maxCallsPerSession})`);
+    }
+
+    const payload = JSON.stringify(body);
+
+    // Guard against an oversized prompt (e.g. an unbounded transcript) costing a huge token bill.
+    if (maxRequestChars !== undefined && payload.length > maxRequestChars) {
+      log.error({ chars: payload.length, maxRequestChars, path }, "request body exceeds max size — refusing OpenRouter call");
+      throw new Error(`OpenRouter request body too large (${payload.length} > ${maxRequestChars} chars)`);
     }
 
     await this.awaitRateLimit();
@@ -69,7 +78,7 @@ export class OpenRouterClient {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: payload,
     });
     if (!res.ok) {
       const detail = await res.text();

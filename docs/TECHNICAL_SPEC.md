@@ -122,7 +122,12 @@ not set. The orchestrator has not been audited for bugs that could trigger unint
 excessive, or looping calls (e.g. a batching or retry bug producing far more calls than the
 batching model above describes). Anyone running this against a real `OPENROUTER_API_KEY`
 rather than the local mock synthesizers is solely responsible for capping their own spend
-and for any charges incurred.
+and for any charges incurred. The model used by each stage is independently configurable
+(`OPENROUTER_LLM_MODEL`, `OPENROUTER_TTS_MODEL`) and priced separately by the provider, with
+pricing that can change over time — check current pricing for whichever model is in use,
+including the defaults, before running against a real key. Overriding the default LLM model
+may also need retuning the reasoning/`max_tokens` handling in `CommentaryWriter`, which is
+tuned for the default model's specific behavior.
 
 ---
 

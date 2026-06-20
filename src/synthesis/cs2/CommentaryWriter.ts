@@ -5,9 +5,10 @@ import { logger } from "../../utils/logger.js";
 const log = logger.child({ service: "[CommentaryWriter]" });
 
 
-// OpenRouter model slug. Flash-lite keeps latency low; on a delayed broadcast we
-// have budget to spare, so a stronger model is a safe upgrade for narrative quality.
-const MODEL = "google/gemini-3.5-flash";
+// Default OpenRouter model slug — overridable via OPENROUTER_LLM_MODEL (see index.ts).
+// Swapping models changes pricing and may need retuning of the reasoning/max_tokens
+// handling below, which is specific to this model's behavior.
+const DEFAULT_MODEL = "google/gemini-3.5-flash";
 
 /**
  * "plain" — raw prose, compatible with any downstream TTS provider.
@@ -193,6 +194,7 @@ export class CommentaryWriter implements ICommentaryWriter {
   constructor(
     private readonly client?: OpenRouterClient,
     private readonly mode: TtsMode = "plain",
+    private readonly model: string = DEFAULT_MODEL,
   ) {}
 
   async write(ctx: CommentaryContext): Promise<CommentaryResult | null> {
@@ -296,7 +298,7 @@ export class CommentaryWriter implements ICommentaryWriter {
       const json = await this.client.postJson<{
         choices?: { message?: { content?: string } }[];
       }>("/chat/completions", {
-        model: MODEL,
+        model: this.model,
         messages: [
           { role: "system", content: this.mode === "gemini" ? buildSystemPromptGemini(targetWords) : buildSystemPromptPlain(targetWords) },
           ...historyMessages,
@@ -306,10 +308,11 @@ export class CommentaryWriter implements ICommentaryWriter {
         // Headroom for the spoken line (~1.6 tokens/word); gemini also emits a CONTEXT
         // sentence + inline tags, so it needs a larger fixed allowance on top.
         max_tokens: Math.ceil(targetWords * 2) + (this.mode === "gemini" ? 1000 : 16),
-        // google/gemini-3.5-flash is a reasoning model that burns max_tokens on hidden
+        // Tuned for the default model (a reasoning model that burns max_tokens on hidden
         // "thinking" tokens before emitting content — at our tight per-line budget that
-        // starves the actual transcript to empty. "minimal" effort skips the reasoning
-        // pass so the small budget goes to the spoken line itself.
+        // starves the actual transcript to empty). "low" effort skips most of the reasoning
+        // pass so the small budget goes to the spoken line itself. If you override the model,
+        // this may need retuning or dropping entirely for non-reasoning models.
         reasoning: { effort: "low" },
       });
       let raw = json.choices?.[0]?.message?.content?.trim();
