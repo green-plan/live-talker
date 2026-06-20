@@ -4,19 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "tsx scripts/fetch-nav-info.ts",
+    "postinstall": "tsx scripts/fetch-nav-info.ts && npm run license:check",
     "fetch:nav-info": "tsx scripts/fetch-nav-info.ts",
     "dev": "npm run build:overlay && tsx --watch src/index.ts",
     "dev:desktop": "OVERLAY=false tsx --watch src/index.ts",
     "build:overlay": "npm run build --prefix overlay",
-    "build": "tsc && npm run build:overlay",
+    "build": "npm run license:check && tsc && npm run build:overlay",
     "start": "node dist/index.js",
     "start:desktop": "OVERLAY=false node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "replay": "tsx scripts/replay.ts temp/gsi-dump.jsonl",
     "replay:fast": "tsx scripts/replay.ts --fast temp/gsi-dump.jsonl",
-    "tts": "tsx scripts/tts.ts"
+    "tts": "tsx scripts/tts.ts",
+    "license:check": "license-checker --production --summary --excludePrivatePackages --onlyAllow \"MIT;ISC;BSD-2-Clause;BSD-3-Clause\""
   },
   "vitest": {
     "environment": "node"
@@ -34,6 +35,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.0.0",
     "@types/ws": "^8.18.1",
+    "license-checker": "^25.0.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

@@ -2,13 +2,15 @@
   "name": "overlay",
   "type": "module",
   "version": "0.0.1",
+  "private": true,
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "npm run license:check && vite build",
+    "preview": "vite preview",
+    "license:check": "license-checker --production --summary --excludePrivatePackages --onlyAllow \"MIT\""
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -19,6 +21,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.0.4",
+    "license-checker": "^25.0.1",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.16"

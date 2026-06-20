@@ -21,6 +21,15 @@ export default defineConfig({
       license({
         thirdParty: {
           output: path.join(rootDir, 'dist', 'third-party-licenses.txt'),
+          // License gate — scoped to what actually ships in the bundle (not the
+          // build-time-only native tools like sharp/lightningcss in node_modules).
+          // Everything bundled today is MIT; a bundled dep with any other license,
+          // or none, fails `astro build`. SPDX expression matched per dependency.
+          allow: {
+            test: 'MIT',
+            failOnUnlicensed: true,
+            failOnViolation: true,
+          },
         },
       }),
     ]
