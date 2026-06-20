@@ -147,6 +147,10 @@ a live waveform plus a timestamped history of what's been said. It also exposes 
 shoutcasting** button that stops the LLM/TTS pipeline backend-wide (no API calls, no tokens spent)
 without losing warm match state, for whenever the process is running but nobody's live.
 
+<p align="center">
+  <img src="docs/images/overlay.png" alt="The browser overlay: live waveform, current line, and a timestamped shoutcast history" width="420">
+</p>
+
 1. Start the backend with the overlay active — see [Running](#running) (`npm run dev:overlay` or
    the production `build:overlay`/`start:overlay` pair).
 2. In OBS, add a **Browser Source** pointed at `http://localhost:3002/` (or your `OVERLAY_PORT`).
