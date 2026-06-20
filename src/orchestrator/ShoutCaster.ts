@@ -35,27 +35,19 @@ const hasSpeakableBeat = (beats: Beat[]): boolean => beats.some(b => b.intensity
 type RenderedSlot = RenderedClip | "FAILED";
 
 // --- Pace/density model ------------------------------------------------------
-// How urgent a batch's delivery should be is a scheduling decision, not
-// something the writer should infer from a raw number — it depends on timing
-// data (queue depth, how much real time the batch's own beats spanned) that
-// only the orchestrator has. Two independent signals feed it, but they are NOT
-// symmetric:
-//   1. queueDepth — backlog: how many OTHER batches are genuinely overdue,
-//      waiting behind this one (see backlogDepth). This is the ONLY signal
-//      allowed to reach "urgent" — the broadcast is provably behind schedule,
-//      so maximum-speed/telegraphic delivery is the correct, narrow response.
-//   2. density — how compressed THIS batch's own action was: an estimated
-//      clip length (more beats → longer) divided by the real-time span the
-//      beats themselves covered. This caps out at "busy" (moderately
-//      tightened) and can NEVER reach "urgent" on its own: the batcher's own
-//      grouping rules (beatGapMs/batchMaxMs) already bound a multi-beat
-//      batch's span tightly by construction, so almost every multi-beat batch
-//      reads as "dense" relative to a flat per-beat speaking-time estimate —
-//      letting that alone trigger maximum-speed delivery meant nearly every
-//      multi-kill got the most aggressive (and least intelligible) tier,
-//      independent of whether the broadcast was actually behind at all.
-// Either signal can push to "busy"; only queueDepth can push to "urgent".
-// Thresholds are tune-by-ear placeholders.
+// Delivery pace is a scheduling call the orchestrator makes from timing data the
+// writer can't see. Two asymmetric signals feed it:
+//   1. queueDepth (feedback) — how many OTHER batches are genuinely overdue
+//      behind this one (see backlogDepth). The ONLY signal that can reach
+//      "urgent": the broadcast is provably behind, so telegraphic delivery is
+//      the right, narrow response.
+//   2. density (feed-forward) — how compressed THIS batch's own action is
+//      (estimated clip length / real-time span). Caps at "busy": the batcher
+//      already bounds a batch's span tightly, so almost every multi-beat batch
+//      reads "dense" — letting that alone hit "urgent" made nearly every
+//      multi-kill the most aggressive (least intelligible) tier regardless of
+//      real backlog.
+// Either can push to "busy"; only queueDepth to "urgent". Thresholds tune-by-ear.
 
 // Estimated spoken length for a batch, before any TTS has actually run — used
 // only to gauge density, never as a real duration. 5s flat for one beat (a
@@ -407,19 +399,13 @@ export class ShoutCaster {
   }
 
   /**
-   * How many OTHER sealed batches are genuinely backed up — i.e. their own
-   * settle wait has already elapsed, so they're sitting idle only because the
-   * text stage is busy with something else, not because they haven't matured
-   * yet. Deliberately NOT `sealedQueue.length` (every batch behind the head):
-   * the settle wait itself takes several seconds, and in any normal match
-   * something else seals during that window just because the game kept going
-   * — that batch isn't "backlog," it just hasn't reached its own readyAt yet
-   * and will get its turn well within its own deadline. Counting it anyway
-   * made `queueDepth` (and therefore pace) read "busy" almost permanently,
-   * independent of whether the broadcast was actually behind schedule.
-   * `batcher.pendingCount()` (still-accumulating, not-yet-sealed beats) is
-   * excluded entirely for the same reason — "the game is still going" isn't
-   * backlog either.
+   * How many OTHER sealed batches are genuinely backed up — their own settle
+   * wait has already elapsed, so they're idle only because the text stage is
+   * busy, not because they haven't matured yet. Deliberately NOT
+   * `sealedQueue.length`: a batch that merely sealed during another's settle
+   * wait hasn't reached its own readyAt and will get its turn within deadline —
+   * counting it made pace read "busy" almost permanently. `pendingCount()`
+   * (not-yet-sealed beats) is excluded for the same reason.
    */
   private backlogDepth(): number {
     const now = Date.now();
@@ -427,17 +413,11 @@ export class ShoutCaster {
   }
 
   /**
-   * Decide how this batch should be delivered — the writer only renders the
-   * result, it doesn't choose it (see contracts.ts). "urgent" (maximum-speed,
-   * telegraphic — see CommentaryWriter's paceLine/buildPerformanceBlock) is
-   * reserved for genuine backlog (queueDepth) alone; this batch's own action
-   * density can only nudge things up to "busy" (see the Pace/density model
-   * comment for why density must not reach "urgent" on its own). Word budget
-   * follows the same beat-count shape as before, just capped by the pace
-   * decided here instead of one the writer derived itself. A pure analysis
-   * filler bypasses both — it only ever fires when the pipeline is already
-   * idle, so it's always "normal" with a fuller budget to actually deliver
-   * downtime analysis instead of a clipped half-sentence.
+   * Decide delivery pace + word budget here, not in the writer (see contracts.ts).
+   * "urgent" is backlog-only; density caps at "busy" (see Pace/density model).
+   * Word budget scales with beat count, capped by pace. A pure analysis filler
+   * bypasses both — it only fires when the pipeline is idle, so it's always
+   * "normal" with a fuller budget for real downtime analysis.
    */
   private planDelivery(batch: SealedBatch, queueDepth: number): { pace: Pace; targetWords: number } {
     const isAnalysis = batch.beats.length === 1 && batch.beats[0].type === "analysis";
