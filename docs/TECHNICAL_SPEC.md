@@ -115,6 +115,15 @@ Passages render to audio concurrently behind the sequential writer, so throughpu
 with the game. A small worker pool bounds how many renders run at once; each finished clip
 is filed by batch index for the play head.
 
+### Cost/usage risk when running against a real provider
+
+Both stages above are real, billed API calls whenever `MOCK`/`MOCK_TEXT`/`MOCK_SPEECH` are
+not set. The orchestrator has not been audited for bugs that could trigger unintended,
+excessive, or looping calls (e.g. a batching or retry bug producing far more calls than the
+batching model above describes). Anyone running this against a real `OPENROUTER_API_KEY`
+rather than the local mock synthesizers is solely responsible for capping their own spend
+and for any charges incurred.
+
 ---
 
 ## 6. Air — the conductor
@@ -136,8 +145,9 @@ order is never violated and clips are never dropped to catch up. Dense sequences
 kills in one window) play back-to-back with no gap, because the later clip's target has
 already passed by the time the earlier one finishes.
 
-This is the core product decision: a deliberate delay buys complete, ordered, accurate
-commentary. It is not a latency bug to be optimized away.
+This is the core design decision: a deliberate delay means commentary is written from
+complete, ordered data rather than partial data. It is not a latency bug to be optimized
+away.
 
 ### Playback is a swappable sink
 

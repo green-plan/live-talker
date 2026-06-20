@@ -16,7 +16,7 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     settleReserveMs: 4000,   // reserved for LLM+TTS+conductor after the settle wait ends
     settleMaxMs: 4000,       // cap how long pickup defers to read incoming pressure
     textConcurrency: 1,      // story is sequential — each passage builds on the last
-    speechConcurrency: 4,    // render up to 4 clips at once behind the LLM
+    speechConcurrency: 3,    // render up to 3 clips at once behind the LLM
     passageHistoryCount: 15, // recent passages fed back as shoutcast history
     beatStoreCapacity: 1000, // ring-buffer cap on retained batches
 };

@@ -26,6 +26,9 @@ import { ARTIFACT_DIR } from "./utils/tempDir.js";
 const log = logger.child({ service: "[index]" });
 
 const PORT = Number(process.env.PORT ?? 3000);
+// Optional — leave unset and use MOCK/MOCK_TEXT/MOCK_SPEECH for no API key and no cost.
+// Real calls are billed and unaudited against bugs causing excessive/looping calls; cap
+// spend on the key itself if you set one (see README).
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const MOCK_TEXT = process.env.MOCK_TEXT === "true" || process.env.MOCK === "true";
 const MOCK_SPEECH = process.env.MOCK_SPEECH === "true" || process.env.MOCK === "true";
@@ -35,10 +38,16 @@ const MOCK_SPEECH_DELAY = Number(process.env.MOCK_SPEECH_DELAY_MS ?? 900);
 // RECORD_BROADCAST=true → save the whole session as one WAV with real timing;
 // or set it to an explicit output path.
 const RECORD_BROADCAST = process.env.RECORD_BROADCAST;
-// OVERLAY=true → audio airs through the browser-based overlay (for OBS's
-// "Control audio via OBS" browser source) instead of desktop playback.
-const OVERLAY = process.env.OVERLAY === "true";
+// On by default — the overlay server (for OBS's "Control audio via OBS" browser
+// source) costs nothing to run idle. Set OVERLAY=false for desktop-only playback
+// with no browser/OBS source involved.
+const OVERLAY = process.env.OVERLAY !== "false";
 const OVERLAY_PORT = Number(process.env.OVERLAY_PORT ?? PORT + 2);
+// Backstop against a bug generating unbounded billed calls — not a usage/cost budget.
+// Rate limit is a trailing-60s sliding window, not a fixed interval, so it doesn't
+// serialize the concurrent speech pool — see OpenRouterClient.
+const OPENROUTER_MAX_CALLS_PER_SESSION = Number(process.env.OPENROUTER_MAX_CALLS_PER_SESSION ?? 2000);
+const OPENROUTER_RATE_LIMIT_PER_MINUTE = Number(process.env.OPENROUTER_RATE_LIMIT_PER_MINUTE ?? 60);
 
 if (MOCK_TEXT) log.info("MOCK_TEXT — using mock LLM, no API key required for text synthesis");
 if (MOCK_SPEECH) log.info("MOCK_SPEECH — using mock TTS (Windows SAPI), no API key required for speech");
@@ -49,7 +58,12 @@ if (OVERLAY) log.info({ port: OVERLAY_PORT }, "OVERLAY — audio airs through th
 
 // One shared HTTP client for all OpenRouter calls — synthesizers receive the
 // abstraction, not the raw credential.
-const orClient = OPENROUTER_API_KEY ? new OpenRouterClient(OPENROUTER_API_KEY) : undefined;
+const orClient = OPENROUTER_API_KEY
+  ? new OpenRouterClient(OPENROUTER_API_KEY, {
+      maxCallsPerSession: OPENROUTER_MAX_CALLS_PER_SESSION,
+      ratePerMinute: OPENROUTER_RATE_LIMIT_PER_MINUTE,
+    })
+  : undefined;
 
 // --- Core components --------------------------------------------------------
 const eventBuffer = new GameEventBuffer(1000);

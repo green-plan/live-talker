@@ -62,7 +62,7 @@ export function startGsiService(
 
   app.post("/", (req, res) => {
     const raw = req.body as CSGORaw;
-    // Append raw payload to dump file before any parsing.
+    // Dump before parsing so a bad frame is still captured for replay/debugging.
     fs.appendFileSync(DUMP_PATH, JSON.stringify({ receivedAt: Date.now(), body: raw }) + "\n", "utf8");
     log.trace({ body: raw }, "raw GSI payload");
     try {
