@@ -48,7 +48,7 @@ The system batches events into short time windows. Only non-empty windows (those
 
 ### B. Broadcast Delay Target
 
-The system targets a realized broadcast delay configured as a fixed floor behind real time. This is an intentional product decision — not a latency problem to solve — and it's what makes accurate post-commentary possible. The "elastic delay" design means the realized delay automatically stretches if the API is slow, always maintaining order, never dropping clips due to congestion. Operators streaming the underlying game footage alongside the commentary should apply a matching delay to that feed (e.g. OBS's stream/render delay) so picture and call stay in sync — see the root [`README.md`](../README.md).
+The system targets a realized broadcast delay configured as a fixed floor behind real time. This is an intentional product decision — not a latency problem to solve — and it's what makes accurate post-commentary possible. The "elastic delay" design means the realized delay automatically stretches if the API is slow, always maintaining order, never dropping clips due to congestion. Operators streaming the underlying game footage alongside the commentary should apply a matching delay to that feed specifically (not the broadcast as a whole) so picture and call stay in sync — see the root [`README.md`](../README.md) for the exact OBS setup.
 
 ### C. Coverage vs. Brevity
 

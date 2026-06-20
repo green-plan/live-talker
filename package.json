@@ -9,6 +9,7 @@
     "dev:overlay": "npm run build:overlay && OVERLAY=true tsx --watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:overlay": "OVERLAY=true node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "replay": "tsx scripts/replay.ts temp/gsi-dump.jsonl",

@@ -5,8 +5,8 @@ to the backend's overlay server over WebSocket, plays each commentary clip throu
 own `<audio>` element (so OBS's "Control audio via OBS" can capture it as an isolated
 track), and renders a live waveform, the current/past lines, and a pause control.
 
-See the root [`README.md`](../README.md#obs-setup--aligning-audio-to-the-delay) for how
-this fits into the broadcast and how to run it.
+See the root [`README.md`](../README.md#broadcasting-with-obs) for how this fits into the
+broadcast and how to run it.
 
 ## Commands
 
